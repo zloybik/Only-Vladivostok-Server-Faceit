@@ -1,0 +1,2 @@
+# Only-Vladivostok-Server-Faceit
+ネットワークの最適化とウラジオストクのFACEITサーバーへの接続を強制するためのツール
