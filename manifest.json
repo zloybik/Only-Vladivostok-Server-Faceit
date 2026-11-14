@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "FACEIT Ping Override — Pathfinder",
+  "version": "1.1.0",
+  "description": "Browser-side FACEIT ping override with a bilingual Pathfinder notice.",
+  "content_scripts": [
+    {
+      "matches": ["https://www.faceit.com/*"],
+      "js": ["ping-main.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://www.faceit.com/*"],
+      "js": ["notice.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["pathfinder-upper.png"],
+      "matches": ["https://www.faceit.com/*"]
+    }
+  ]
+}
