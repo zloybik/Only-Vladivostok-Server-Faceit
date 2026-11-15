@@ -344,7 +344,11 @@
 
   function clickElement(el) {
     if (!el) return;
-    const r = el.getBoundingClientRect ? el.getBoundingClientRect() : { left: 0, top: 0, width: 0, height: 0 };
+    const target = (el.nodeType === Node.ELEMENT_NODE && el.closest)
+      ? (el.closest("button, [role='button'], div") || el)
+      : el;
+
+    const r = target.getBoundingClientRect ? target.getBoundingClientRect() : { left: 0, top: 0, width: 0, height: 0 };
     const cx = r.left + (r.width > 0 ? r.width / 2 : 0);
     const cy = r.top + (r.height > 0 ? r.height / 2 : 0);
     const eventOpts = {
@@ -366,9 +370,13 @@
           ? new PointerEvent(name, { ...eventOpts, pointerId: 1, pointerType: "mouse", isPrimary: true })
           : new MouseEvent(name, eventOpts);
         el.dispatchEvent(evt);
+        if (target !== el) target.dispatchEvent(evt);
       } catch {}
     }
-    if (typeof el.click === "function") {
+    if (typeof target.click === "function") {
+      try { target.click(); } catch {}
+    }
+    if (typeof el.click === "function" && el !== target) {
       try { el.click(); } catch {}
     }
   }
@@ -455,36 +463,28 @@
 
     // 2. Direct check on the remembered "FIND MATCH" div element
     if (lastFindMatchElement && lastFindMatchElement.isConnected) {
-      // Look for any close/cancel/svg element inside it
       const sub = lastFindMatchElement.querySelector('button, [role="button"], [aria-label*="cancel" i], [aria-label*="close" i], svg, [class*="close" i], [class*="cancel" i]');
-      if (sub) {
-        clickElement(sub);
-        return true;
-      }
+      if (sub) clickElement(sub);
       clickElement(lastFindMatchElement);
-      return true;
     }
 
     // 3. Coordinate-based click on the exact location of the bottom match button
     const targetX = lastFindMatchRect ? lastFindMatchRect.x : Math.round(window.innerWidth / 2);
     const targetY = lastFindMatchRect ? lastFindMatchRect.y : Math.round(window.innerHeight - 80);
 
-    // Try the right side of the button first (where the "X" / cancel sub-button usually is)
+    // Try the right side of the button (where the "X" / cancel sub-button usually is)
     if (lastFindMatchRect) {
       const rightX = Math.round(lastFindMatchRect.left + lastFindMatchRect.width - 25);
       const rightEl = document.elementFromPoint(rightX, targetY);
       if (rightEl && !isForbiddenButton(rightEl.textContent)) {
         clickElement(rightEl);
-        return true;
       }
     }
 
     // Try center of the button
     const centerEl = document.elementFromPoint(targetX, targetY);
     if (centerEl && !isForbiddenButton(centerEl.textContent)) {
-      const clickTarget = centerEl.closest("button, [role='button'], div") || centerEl;
-      clickElement(clickTarget);
-      return true;
+      clickElement(centerEl);
     }
 
     // 4. Scan bottom-center dock for any interactive candidate
@@ -511,16 +511,16 @@
       }
     }
 
-    return false;
+    return true;
   }
 
   function isFaceitInQueue() {
-    // 1. If the "FIND MATCH" / "マッチを探す" button is visible anywhere on screen, we are definitely NOT in queue!
-    const findMatchButtons = Array.from(document.querySelectorAll("button, [role='button']")).filter((b) => {
+    // 1. If the "FIND MATCH" / "マッチを探す" button is visible near bottom, we are definitely NOT in queue!
+    const findMatchButtons = Array.from(document.querySelectorAll("button, [role='button'], div, a")).filter((b) => {
       const t = (b.textContent || "").trim().toLowerCase();
       if (t === "find match" || t === "マッチを探す" || t === "対戦を探す") {
         const rect = b.getBoundingClientRect();
-        return rect.width > 40 && rect.height > 20;
+        return rect.width > 40 && rect.height > 20 && rect.top > window.innerHeight - 250;
       }
       return false;
     });
@@ -705,12 +705,19 @@
         startQueueTimer();
       }
     } else {
-      // While timer is running, if we are no longer in queue, stop timer after 2s
-      if (!isFaceitInQueue()) {
-        const elapsed = (Date.now() - queueStartTime) / 1000;
-        if (elapsed > 2) {
-          stopQueueTimer();
+      // While timer is running, ONLY stop if FIND MATCH button is actually back on screen!
+      const hasFindMatch = Array.from(document.querySelectorAll("button, [role='button'], div, a")).some((b) => {
+        const t = (b.textContent || "").trim().toLowerCase();
+        if (t === "find match" || t === "マッチを探す" || t === "対戦を探す") {
+          const r = b.getBoundingClientRect();
+          return r.width > 50 && r.height > 20 && r.top > window.innerHeight - 250;
         }
+        return false;
+      });
+
+      // If FIND MATCH is back on screen AND at least 2.5s have passed since search started:
+      if (hasFindMatch && (Date.now() - queueStartTime) > 2500) {
+        stopQueueTimer();
       }
     }
   }, 1000);
