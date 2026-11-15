@@ -205,8 +205,8 @@
       message = "ウラジオストクサーバーは現在満員です。次のキューでの利用は控えてください。";
       sub = "Vladivostok servers are currently full. Avoid relying on this server for your next queue.";
     } else if (raw === "LOCATION_CAPACITY_STATUS_HIGH_TRAFFIC") {
-      message = "ウラジオストクサーバーは現在高負荷状態です。次のキューでの利用は控えてください。";
-      sub = "Vladivostok is experiencing high traffic. Avoid relying on this server for your next queue.";
+      message = "ウラジオストクサーバーは現在高トラフィックです。ご注意ください。";
+      sub = "Vladivostok server is currently experiencing high traffic. Please be careful.";
     } else if (raw === "NOT_LISTED") {
       message = "現在のマッチメイキング一覧にウラジオストクサーバーが見つかりません。稼働状況を確認できません。";
       sub = "Vladivostok is not present in the current matchmaking server list. Its availability cannot be confirmed.";
