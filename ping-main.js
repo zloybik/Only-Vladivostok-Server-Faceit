@@ -1,12 +1,31 @@
-// FACEIT Ping Override — derived from the supplied FACEIT Elo Diff 0.5.1 source.
-// This changes browser-side ping measurements only; it does not alter real network latency.
+// FACEIT Ping Override — Pathfinder
+// Guarantees Vladivostok (and allowed nodes) are always lowest latency (~30-35ms).
 (() => {
   "use strict";
 
   const PING_HOST_SUFFIX = ".ping.faceit.com";
-  const EXEMPT_HOST = "vladivostok.eu.ping.faceit.com";
   const ARTIFICIAL_DELAY_MS = 1000;
   const INFLATED_FIELDS = new Set(["responseStart", "responseEnd", "duration"]);
+
+  function readStoredConfig() {
+    try {
+      const raw = window.localStorage.getItem("pathfinder_config");
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  let activeConfig = readStoredConfig();
+
+  function updateConfig(detail) {
+    if (detail && typeof detail === "object") {
+      activeConfig = { ...activeConfig, ...detail };
+    }
+  }
+
+  window.addEventListener("pathfinder:config-changed", (event) => updateConfig(event?.detail));
+  document.addEventListener("pathfinder:config-changed", (event) => updateConfig(event?.detail));
 
   function pingHost(resource) {
     try {
@@ -16,7 +35,7 @@
           : resource instanceof URL
             ? resource.href
             : resource?.url;
-      if (typeof raw !== "string" || !raw.includes(PING_HOST_SUFFIX)) return null;
+      if (!raw || typeof raw !== "string" || !raw.includes(PING_HOST_SUFFIX)) return null;
       const hostname = new URL(raw, location.href).hostname.toLowerCase();
       return hostname.endsWith(PING_HOST_SUFFIX) ? hostname : null;
     } catch {
@@ -24,33 +43,132 @@
     }
   }
 
-  function penaltyForHost(host) {
-    return host === EXEMPT_HOST ? 0 : ARTIFICIAL_DELAY_MS;
+  function isHostExempt(host) {
+    if (!host) return false;
+    const h = String(host).toLowerCase();
+    // Vladivostok is ALWAYS exempt and spoofed to ultra-fast 30ms ping
+    if (h.includes("vladivostok") || h.includes("vdk")) return true;
+    if (activeConfig.allowNovosibirsk && (h.includes("novosibirsk") || h.includes("nsk"))) return true;
+    if (activeConfig.allowKazakhstan && (h.includes("kazakhstan") || h.includes("almaty") || h.includes("astana") || h.includes("kz"))) return true;
+    return false;
+  }
+
+  function isSpoofingEnabled(host) {
+    if (!host) return false;
+    const h = String(host).toLowerCase();
+    if (h.includes("vladivostok") || h.includes("vdk")) {
+      return activeConfig.spoofVvoPing !== false;
+    }
+    if (h.includes("novosibirsk") || h.includes("nsk")) {
+      return !!activeConfig.spoofNskPing;
+    }
+    if (h.includes("kazakhstan") || h.includes("almaty") || h.includes("astana") || h.includes("kz")) {
+      return !!activeConfig.spoofKazPing;
+    }
+    return false;
+  }
+
+  function getTargetDelay(host) {
+    const h = String(host).toLowerCase();
+    if (h.includes("vladivostok") || h.includes("vdk")) return 15; // results in ~30-35ms in FACEIT UI
+    if (h.includes("novosibirsk") || h.includes("nsk")) {
+      return activeConfig.spoofNskPing ? 15 : 45;
+    }
+    if (h.includes("kazakhstan") || h.includes("almaty") || h.includes("astana") || h.includes("kz")) {
+      return activeConfig.spoofKazPing ? 15 : 60;
+    }
+    return 15;
   }
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  // FACEIT may measure ping using wall-clock time around fetch(). Delaying the
-  // response makes that fallback include the configured artificial latency.
+  // 1. Hook window.fetch for latency measurement
   const nativeFetch = window.fetch;
   window.fetch = function (resource) {
     const host = pingHost(resource);
     if (!host) return nativeFetch.apply(this, arguments);
 
-    const penalty = penaltyForHost(host);
-    const startedAt = performance.now();
-    const result = nativeFetch.apply(this, arguments);
+    // If exempt (Vladivostok, Novosibirsk, Kazakhstan):
+    if (isHostExempt(host)) {
+      // Fire real request in background so browser network stack creates PerformanceResourceTiming entry
+      try {
+        const bg = nativeFetch.apply(this, arguments);
+        bg.then((r) => r.clone().arrayBuffer().catch(() => {})).catch(() => {});
+      } catch {}
 
-    // Preserve the original response and let the browser produce its resource timing entry.
+      if (isSpoofingEnabled(host)) {
+        const ms = getTargetDelay(host);
+        return sleep(ms).then(() => new Response("OK", {
+          status: 200,
+          statusText: "OK",
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Timing-Allow-Origin": "*"
+          }
+        }));
+      }
+      return nativeFetch.apply(this, arguments);
+    }
+
+    // For all other hosts (Germany, Finland, Moscow, etc.): inject +1000ms delay
+    const result = nativeFetch.apply(this, arguments);
     result.then(() => {}).catch(() => {});
-    if (!penalty) return result;
 
     return result.then((response) => {
-      // Drain a clone so the resource timing entry becomes available promptly.
       response.clone().arrayBuffer().catch(() => {});
-      return sleep(penalty).then(() => response);
+      return sleep(ARTIFICIAL_DELAY_MS).then(() => response);
     });
   };
+
+  // 2. Hook XMLHttpRequest in case FACEIT uses XHR for ping checks
+  const NativeXHR = window.XMLHttpRequest;
+  if (NativeXHR) {
+    const nativeOpen = NativeXHR.prototype.open;
+    const nativeSend = NativeXHR.prototype.send;
+
+    NativeXHR.prototype.open = function (method, url, ...rest) {
+      this.__pathfinderPingHost = pingHost(url);
+      return nativeOpen.call(this, method, url, ...rest);
+    };
+
+    NativeXHR.prototype.send = function (...args) {
+      const host = this.__pathfinderPingHost;
+      if (host && isHostExempt(host)) {
+        const ms = getTargetDelay(host);
+        setTimeout(() => {
+          try {
+            Object.defineProperty(this, "readyState", { value: 4, configurable: true });
+            Object.defineProperty(this, "status", { value: 200, configurable: true });
+            Object.defineProperty(this, "statusText", { value: "OK", configurable: true });
+            Object.defineProperty(this, "responseText", { value: "OK", configurable: true });
+            Object.defineProperty(this, "response", { value: "OK", configurable: true });
+            this.dispatchEvent(new Event("readystatechange"));
+            this.dispatchEvent(new Event("load"));
+            this.dispatchEvent(new Event("loadend"));
+          } catch {}
+        }, ms);
+        return;
+      }
+      return nativeSend.apply(this, args);
+    };
+  }
+
+  // 3. Hook Performance Timing APIs
+  function clampEntry(entry, targetDurationMs) {
+    return new Proxy(entry, {
+      get(target, prop) {
+        const value = Reflect.get(target, prop, target);
+        if (typeof value === "function") return value.bind(target);
+        if (prop === "duration") return targetDurationMs;
+        const base = typeof target.startTime === "number" ? target.startTime : (target.fetchStart || 0);
+        if (prop === "responseStart") return base + Math.round(targetDurationMs * 0.6);
+        if (prop === "responseEnd") return base + targetDurationMs;
+        if (prop === "connectEnd") return base + Math.round(targetDurationMs * 0.3);
+        if (prop === "requestStart") return base + Math.round(targetDurationMs * 0.4);
+        return value;
+      }
+    });
+  }
 
   function inflateEntry(entry, penalty) {
     return new Proxy(entry, {
@@ -66,10 +184,18 @@
   }
 
   function patchEntries(entries) {
+    if (!Array.isArray(entries)) return entries;
     return entries.map((entry) => {
-      const host = entry.entryType === "resource" ? pingHost(entry.name) : null;
-      const penalty = host ? penaltyForHost(host) : 0;
-      return penalty ? inflateEntry(entry, penalty) : entry;
+      const host = entry?.entryType === "resource" ? pingHost(entry.name) : null;
+      if (!host) return entry;
+      if (isHostExempt(host)) {
+        if (isSpoofingEnabled(host)) {
+          const ms = getTargetDelay(host);
+          return clampEntry(entry, ms);
+        }
+        return entry;
+      }
+      return inflateEntry(entry, ARTIFICIAL_DELAY_MS);
     });
   }
 
@@ -81,6 +207,7 @@
     };
   }
 
+  // Intercept PerformanceObserver
   const NativePerformanceObserver = window.PerformanceObserver;
   if (NativePerformanceObserver) {
     class PatchedPerformanceObserver extends NativePerformanceObserver {
@@ -91,5 +218,28 @@
       }
     }
     window.PerformanceObserver = PatchedPerformanceObserver;
+  }
+
+  // Intercept window.performance
+  if (window.performance) {
+    const nativeGetEntries = window.performance.getEntries;
+    const nativeGetEntriesByType = window.performance.getEntriesByType;
+    const nativeGetEntriesByName = window.performance.getEntriesByName;
+
+    if (typeof nativeGetEntries === "function") {
+      window.performance.getEntries = function () {
+        return patchEntries(nativeGetEntries.apply(this, arguments));
+      };
+    }
+    if (typeof nativeGetEntriesByType === "function") {
+      window.performance.getEntriesByType = function (type) {
+        return patchEntries(nativeGetEntriesByType.apply(this, arguments));
+      };
+    }
+    if (typeof nativeGetEntriesByName === "function") {
+      window.performance.getEntriesByName = function (name, type) {
+        return patchEntries(nativeGetEntriesByName.apply(this, arguments));
+      };
+    }
   }
 })();
