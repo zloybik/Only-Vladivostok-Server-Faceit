@@ -12,6 +12,7 @@
     enableQueueTimer: true,
     enableQueueBeep: true,
     autoCancelQueue: true,
+    autoRestartQueue: false,
     autoCancelSeconds: 58,
     enableProxy: false,
     proxyScheme: "socks5",
@@ -53,6 +54,8 @@
       queueTimerSub: "HUDタイマー表示 & 制限直前アラート音",
       autoCancelTitle: "自動キューキャンセル",
       autoCancelSub: "EU/他地域へのマッチング拡大前に自動取り消し",
+      autoRestartTitle: "キャンセル後、自動で再検索",
+      autoRestartSub: "キャンセル直後に自動でキューを再開 (Auto-Requeue)",
       cancelAfterTitle: "キャンセル待機秒数",
       cancelAfterSub: "指定秒数で自動再検索（1〜120秒）",
       btnTestBeep: "🔊 警告音テスト",
@@ -116,6 +119,8 @@
       queueTimerSub: "Visual queue timer & countdown beep",
       autoCancelTitle: "Auto-Cancel Queue",
       autoCancelSub: "Cancel before pool expands to distant regions",
+      autoRestartTitle: "Auto-Restart Queue after Cancel",
+      autoRestartSub: "Automatically start search again after cancelling (Auto-Requeue)",
       cancelAfterTitle: "Cancel After (Seconds)",
       cancelAfterSub: "Re-queue threshold (1 to 120s)",
       btnTestBeep: "🔊 Test Alert Sound",
@@ -211,6 +216,8 @@
     document.getElementById("tQueueTimerSub").textContent = t.queueTimerSub;
     document.getElementById("tAutoCancelTitle").textContent = t.autoCancelTitle;
     document.getElementById("tAutoCancelSub").textContent = t.autoCancelSub;
+    if (document.getElementById("tAutoRestartTitle")) document.getElementById("tAutoRestartTitle").textContent = t.autoRestartTitle;
+    if (document.getElementById("tAutoRestartSub")) document.getElementById("tAutoRestartSub").textContent = t.autoRestartSub;
     document.getElementById("tCancelAfterTitle").textContent = t.cancelAfterTitle;
     document.getElementById("tCancelAfterSub").textContent = t.cancelAfterSub;
     if (document.getElementById("btnTestBeep")) document.getElementById("btnTestBeep").textContent = t.btnTestBeep;
@@ -253,6 +260,8 @@
   const elAutoCancel = document.getElementById("autoCancelQueue");
   const elAutoCancelSeconds = document.getElementById("autoCancelSeconds");
   const rowAutoCancelTime = document.getElementById("rowAutoCancelTime");
+  const elAutoRestart = document.getElementById("autoRestartQueue");
+  const rowAutoRestart = document.getElementById("rowAutoRestart");
 
   const elEnableProxy = document.getElementById("enableProxy");
   const elProxyScheme = document.getElementById("proxyScheme");
@@ -291,6 +300,10 @@
     if (rowAutoCancelTime) {
       rowAutoCancelTime.style.opacity = elAutoCancel.checked ? "1" : "0.4";
       elAutoCancelSeconds.disabled = !elAutoCancel.checked;
+    }
+    if (rowAutoRestart) {
+      rowAutoRestart.style.opacity = elAutoCancel.checked ? "1" : "0.4";
+      if (elAutoRestart) elAutoRestart.disabled = !elAutoCancel.checked;
     }
   }
 
@@ -368,6 +381,7 @@
       enableQueueTimer: elQueueTimer.checked,
       enableQueueBeep: elQueueTimer.checked,
       autoCancelQueue: elAutoCancel.checked,
+      autoRestartQueue: elAutoRestart ? elAutoRestart.checked : false,
       autoCancelSeconds: secs,
       enableProxy: elEnableProxy.checked,
       proxyScheme: elProxyScheme.value,
@@ -441,6 +455,7 @@
     if (elSpoofVvo) elSpoofVvo.checked = config.spoofVvoPing !== false;
     elQueueTimer.checked = !!config.enableQueueTimer;
     elAutoCancel.checked = !!config.autoCancelQueue;
+    if (elAutoRestart) elAutoRestart.checked = !!config.autoRestartQueue;
     elAutoCancelSeconds.value = Number(config.autoCancelSeconds) || 58;
 
     elEnableProxy.checked = !!config.enableProxy;
@@ -464,6 +479,7 @@
     elSpoofVvo,
     elQueueTimer,
     elAutoCancel,
+    elAutoRestart,
     elAutoCancelSeconds,
     elEnableProxy,
     elProxyScheme,
@@ -499,6 +515,15 @@
   if (elAutoCancelSeconds) {
     elAutoCancelSeconds.addEventListener("input", () => {
       if (!elAutoCancel.checked) {
+        elAutoCancel.checked = true;
+      }
+      saveSettings();
+    });
+  }
+
+  if (elAutoRestart) {
+    elAutoRestart.addEventListener("change", () => {
+      if (elAutoRestart.checked && !elAutoCancel.checked) {
         elAutoCancel.checked = true;
       }
       saveSettings();

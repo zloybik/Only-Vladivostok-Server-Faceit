@@ -373,7 +373,7 @@
       <img src="pathfinder-upper.png" alt="Pathfinder">
       <div class="header-text">
         <h1>PATHFINDER</h1>
-        <p>FACEIT OVERRIDE v1.5.0</p>
+        <p>FACEIT OVERRIDE v1.5.2</p>
       </div>
     </div>
     <div class="lang-switch">
@@ -548,6 +548,17 @@
           <input type="number" id="autoCancelSeconds" min="1" max="120" value="58" class="num-input">
           <span style="font-size: 11px; color: var(--text-muted);" id="tSecUnit">秒</span>
         </div>
+      </div>
+
+      <div class="row" id="rowAutoRestart">
+        <div class="row-info">
+          <div class="row-title" id="tAutoRestartTitle">キャンセル後、自動で再検索</div>
+          <div class="row-sub" id="tAutoRestartSub">キャンセル直後に自動でキューを再開 (Auto-Requeue)</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="autoRestartQueue">
+          <span class="slider"></span>
+        </label>
       </div>
     </div>
 

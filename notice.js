@@ -18,6 +18,7 @@
     enableQueueTimer: true,
     enableQueueBeep: true,
     autoCancelQueue: true,
+    autoRestartQueue: false,
     autoCancelSeconds: 58
   };
 
@@ -514,6 +515,67 @@
     return true;
   }
 
+  function isFindMatchElement(el) {
+    if (!el) return false;
+    const t = (el.innerText || el.textContent || "").trim().toLowerCase();
+    if (t === "find match" || t.includes("find match") || t === "マッチを探す" || t.includes("マッチを探す") || t === "対戦を探す") {
+      const rect = el.getBoundingClientRect();
+      return rect.width > 40 && rect.height > 20 && rect.top > window.innerHeight - 250;
+    }
+    return false;
+  }
+
+  function restartMatchmaking(attempts = 0) {
+    // If match was found (Accept button) or modal dialog is open, do not restart!
+    if (document.querySelector('button[data-testid*="accept" i], [aria-label*="accept" i]')) return;
+    if (document.querySelector('[aria-modal="true"], [role="dialog"], [class*="Modal" i]')) return;
+
+    // 1. Scan for FIND MATCH button / div / span
+    const allCandidates = Array.from(document.querySelectorAll("button, [role='button'], div, span, a"));
+    let matchEl = null;
+    for (const el of allCandidates) {
+      if (isFindMatchElement(el)) {
+        matchEl = el.closest("button, [role='button'], div") || el;
+        break;
+      }
+    }
+
+    if (matchEl) {
+      lastFindMatchElement = matchEl;
+      const r = matchEl.getBoundingClientRect();
+      lastFindMatchRect = {
+        x: Math.round(r.left + r.width / 2),
+        y: Math.round(r.top + r.height / 2),
+        left: r.left,
+        top: r.top,
+        width: r.width,
+        height: r.height
+      };
+      clickElement(matchEl);
+      startQueueTimer();
+      return;
+    }
+
+    // 2. Coordinate fallback at bottom-center where button was located
+    const targetX = lastFindMatchRect ? lastFindMatchRect.x : Math.round(window.innerWidth / 2);
+    const targetY = lastFindMatchRect ? lastFindMatchRect.y : Math.round(window.innerHeight - 80);
+    const el = document.elementFromPoint(targetX, targetY);
+    if (el) {
+      const clickTarget = el.closest("button, [role='button'], div") || el;
+      const t = (clickTarget.textContent || "").trim().toLowerCase();
+      if (t.includes("find match") || t.includes("マッチ") || t.includes("play")) {
+        clickElement(clickTarget);
+        startQueueTimer();
+        return;
+      }
+    }
+
+    // 3. If button hasn't re-rendered yet, retry polling every 400ms up to 10 attempts (total ~4 seconds)
+    if (attempts < 10) {
+      setTimeout(() => restartMatchmaking(attempts + 1), 400);
+    }
+  }
+
   function isFaceitInQueue() {
     // 1. If the "FIND MATCH" / "マッチを探す" button is visible near bottom, we are definitely NOT in queue!
     const findMatchButtons = Array.from(document.querySelectorAll("button, [role='button'], div, a")).filter((b) => {
@@ -643,12 +705,25 @@
       cancelMatchmaking();
       stopQueueTimer();
       playWarningBeep();
+
+      const willRestart = !!currentConfig.autoRestartQueue;
+
       makePanel({
-        title: "自動キャンセル / Auto-Cancelled",
-        message: `${maxSec}秒に達したため、キューを自動キャンセルしました。`,
-        sub: `Queue was automatically cancelled at ${maxSec}s limit.`,
+        title: willRestart ? "自動再検索 / Auto-Requeuing" : "自動キャンセル / Auto-Cancelled",
+        message: willRestart
+          ? `${maxSec}秒に達したため、キューをリセットして自動再検索します。`
+          : `${maxSec}秒に達したため、キューを自動キャンセルしました。`,
+        sub: willRestart
+          ? `Resetting queue at ${maxSec}s limit and re-queuing automatically...`
+          : `Queue was automatically cancelled at ${maxSec}s limit.`,
         buttonLabel: "OK"
       });
+
+      if (willRestart) {
+        setTimeout(() => {
+          restartMatchmaking(0);
+        }, 500);
+      }
     }
   }
 
