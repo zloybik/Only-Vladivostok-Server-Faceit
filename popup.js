@@ -262,6 +262,8 @@
   const rowAutoCancelTime = document.getElementById("rowAutoCancelTime");
   const elAutoRestart = document.getElementById("autoRestartQueue");
   const rowAutoRestart = document.getElementById("rowAutoRestart");
+  const rowSpoofNsk = document.getElementById("rowSpoofNsk");
+  const rowSpoofKaz = document.getElementById("rowSpoofKaz");
 
   const elEnableProxy = document.getElementById("enableProxy");
   const elProxyScheme = document.getElementById("proxyScheme");
@@ -297,13 +299,42 @@
   }
 
   function updateAutoCancelVisibility() {
+    const cancelOn = !!elAutoCancel.checked;
     if (rowAutoCancelTime) {
-      rowAutoCancelTime.style.opacity = elAutoCancel.checked ? "1" : "0.4";
-      elAutoCancelSeconds.disabled = !elAutoCancel.checked;
+      rowAutoCancelTime.style.opacity = cancelOn ? "1" : "0.35";
+      rowAutoCancelTime.style.pointerEvents = cancelOn ? "auto" : "none";
+      elAutoCancelSeconds.disabled = !cancelOn;
     }
     if (rowAutoRestart) {
-      rowAutoRestart.style.opacity = elAutoCancel.checked ? "1" : "0.4";
-      if (elAutoRestart) elAutoRestart.disabled = !elAutoCancel.checked;
+      rowAutoRestart.style.opacity = cancelOn ? "1" : "0.35";
+      rowAutoRestart.style.pointerEvents = cancelOn ? "auto" : "none";
+      if (elAutoRestart) {
+        elAutoRestart.disabled = !cancelOn;
+        if (!cancelOn) {
+          elAutoRestart.checked = false;
+        }
+      }
+    }
+  }
+
+  function updateSubtogglesVisibility() {
+    const nskOn = !!elNovosibirsk.checked;
+    if (rowSpoofNsk) {
+      rowSpoofNsk.style.opacity = nskOn ? "1" : "0.35";
+      rowSpoofNsk.style.pointerEvents = nskOn ? "auto" : "none";
+      if (elSpoofNsk) {
+        elSpoofNsk.disabled = !nskOn;
+        if (!nskOn) elSpoofNsk.checked = false;
+      }
+    }
+    const kazOn = !!elKazakhstan.checked;
+    if (rowSpoofKaz) {
+      rowSpoofKaz.style.opacity = kazOn ? "1" : "0.35";
+      rowSpoofKaz.style.pointerEvents = kazOn ? "auto" : "none";
+      if (elSpoofKaz) {
+        elSpoofKaz.disabled = !kazOn;
+        if (!kazOn) elSpoofKaz.checked = false;
+      }
     }
   }
 
@@ -371,17 +402,27 @@
     let port = parseInt(elProxyPort.value, 10);
     if (isNaN(port) || port <= 0) port = 1080;
 
+    if (!elNovosibirsk.checked && elSpoofNsk) {
+      elSpoofNsk.checked = false;
+    }
+    if (!elKazakhstan.checked && elSpoofKaz) {
+      elSpoofKaz.checked = false;
+    }
+    if (!elAutoCancel.checked && elAutoRestart) {
+      elAutoRestart.checked = false;
+    }
+
     const config = {
       lang: currentLang,
       allowNovosibirsk: elNovosibirsk.checked,
-      spoofNskPing: elSpoofNsk ? elSpoofNsk.checked : false,
+      spoofNskPing: elNovosibirsk.checked && elSpoofNsk ? elSpoofNsk.checked : false,
       allowKazakhstan: elKazakhstan.checked,
-      spoofKazPing: elSpoofKaz ? elSpoofKaz.checked : false,
+      spoofKazPing: elKazakhstan.checked && elSpoofKaz ? elSpoofKaz.checked : false,
       spoofVvoPing: elSpoofVvo ? elSpoofVvo.checked : true,
       enableQueueTimer: elQueueTimer.checked,
       enableQueueBeep: elQueueTimer.checked,
       autoCancelQueue: elAutoCancel.checked,
-      autoRestartQueue: elAutoRestart ? elAutoRestart.checked : false,
+      autoRestartQueue: elAutoCancel.checked && elAutoRestart ? elAutoRestart.checked : false,
       autoCancelSeconds: secs,
       enableProxy: elEnableProxy.checked,
       proxyScheme: elProxyScheme.value,
@@ -394,6 +435,7 @@
       broadcastSettings(config);
       updateBadges(config);
       updateAutoCancelVisibility();
+      updateSubtogglesVisibility();
       updateProxyUI(config);
     });
   }
@@ -449,13 +491,13 @@
     applyLanguage(currentLang);
 
     elNovosibirsk.checked = !!config.allowNovosibirsk;
-    if (elSpoofNsk) elSpoofNsk.checked = !!config.spoofNskPing;
+    if (elSpoofNsk) elSpoofNsk.checked = elNovosibirsk.checked && !!config.spoofNskPing;
     elKazakhstan.checked = !!config.allowKazakhstan;
-    if (elSpoofKaz) elSpoofKaz.checked = !!config.spoofKazPing;
+    if (elSpoofKaz) elSpoofKaz.checked = elKazakhstan.checked && !!config.spoofKazPing;
     if (elSpoofVvo) elSpoofVvo.checked = config.spoofVvoPing !== false;
     elQueueTimer.checked = !!config.enableQueueTimer;
     elAutoCancel.checked = !!config.autoCancelQueue;
-    if (elAutoRestart) elAutoRestart.checked = !!config.autoRestartQueue;
+    if (elAutoRestart) elAutoRestart.checked = elAutoCancel.checked && !!config.autoRestartQueue;
     elAutoCancelSeconds.value = Number(config.autoCancelSeconds) || 58;
 
     elEnableProxy.checked = !!config.enableProxy;
@@ -466,20 +508,15 @@
 
     updateBadges(config);
     updateAutoCancelVisibility();
+    updateSubtogglesVisibility();
     updateProxyUI(config);
     updatePeakHours();
   });
 
   // Attach change listeners
   [
-    elNovosibirsk,
-    elSpoofNsk,
-    elKazakhstan,
-    elSpoofKaz,
     elSpoofVvo,
     elQueueTimer,
-    elAutoCancel,
-    elAutoRestart,
     elAutoCancelSeconds,
     elEnableProxy,
     elProxyScheme,
@@ -494,11 +531,52 @@
     }
   });
 
+  if (elAutoCancel) {
+    elAutoCancel.addEventListener("change", () => {
+      if (!elAutoCancel.checked && elAutoRestart) {
+        elAutoRestart.checked = false;
+      }
+      updateAutoCancelVisibility();
+      saveSettings();
+    });
+  }
+
+  if (elAutoRestart) {
+    elAutoRestart.addEventListener("change", () => {
+      if (elAutoRestart.checked && !elAutoCancel.checked) {
+        elAutoRestart.checked = false;
+      }
+      updateAutoCancelVisibility();
+      saveSettings();
+    });
+  }
+
+  if (elNovosibirsk) {
+    elNovosibirsk.addEventListener("change", () => {
+      if (!elNovosibirsk.checked && elSpoofNsk) {
+        elSpoofNsk.checked = false;
+      }
+      updateSubtogglesVisibility();
+      saveSettings();
+    });
+  }
+
   if (elSpoofNsk) {
     elSpoofNsk.addEventListener("change", () => {
       if (elSpoofNsk.checked && !elNovosibirsk.checked) {
         elNovosibirsk.checked = true;
       }
+      updateSubtogglesVisibility();
+      saveSettings();
+    });
+  }
+
+  if (elKazakhstan) {
+    elKazakhstan.addEventListener("change", () => {
+      if (!elKazakhstan.checked && elSpoofKaz) {
+        elSpoofKaz.checked = false;
+      }
+      updateSubtogglesVisibility();
       saveSettings();
     });
   }
@@ -508,6 +586,7 @@
       if (elSpoofKaz.checked && !elKazakhstan.checked) {
         elKazakhstan.checked = true;
       }
+      updateSubtogglesVisibility();
       saveSettings();
     });
   }

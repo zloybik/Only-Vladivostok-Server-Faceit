@@ -2,6 +2,9 @@
 (() => {
   "use strict";
 
+  if (window.__PATHFINDER_HEALTH_LOADED__) return;
+  window.__PATHFINDER_HEALTH_LOADED__ = true;
+
   const API_PATH = "/api/matchmaking-bff/v1/users/";
   const EVENT_HEALTH = "pathfinder:vladivostok-health";
   const EVENT_SERVERS_HEALTH = "pathfinder:servers-health";

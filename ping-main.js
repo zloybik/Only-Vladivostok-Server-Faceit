@@ -3,11 +3,18 @@
 (() => {
   "use strict";
 
+  if (window.__PATHFINDER_PING_LOADED__) return;
+  window.__PATHFINDER_PING_LOADED__ = true;
+
   const PING_HOST_SUFFIX = ".ping.faceit.com";
   const ARTIFICIAL_DELAY_MS = 1000;
   const INFLATED_FIELDS = new Set(["responseStart", "responseEnd", "duration"]);
 
   function readStoredConfig() {
+    try {
+      const domConfig = document.documentElement?.dataset?.pathfinderConfig;
+      if (domConfig) return JSON.parse(domConfig);
+    } catch {}
     try {
       const raw = window.localStorage.getItem("pathfinder_config");
       return raw ? JSON.parse(raw) : {};
@@ -21,8 +28,21 @@
   function updateConfig(detail) {
     if (detail && typeof detail === "object") {
       activeConfig = { ...activeConfig, ...detail };
+      try {
+        window.localStorage.setItem("pathfinder_config", JSON.stringify(activeConfig));
+      } catch {}
     }
   }
+
+  function getConfig() {
+    return { ...readStoredConfig(), ...activeConfig };
+  }
+
+  window.addEventListener("message", (event) => {
+    if (event.data?.source === "pathfinder-bridge" && event.data.config) {
+      updateConfig(event.data.config);
+    }
+  });
 
   window.addEventListener("pathfinder:config-changed", (event) => updateConfig(event?.detail));
   document.addEventListener("pathfinder:config-changed", (event) => updateConfig(event?.detail));
@@ -45,37 +65,42 @@
 
   function isHostExempt(host) {
     if (!host) return false;
+    const cfg = getConfig();
     const h = String(host).toLowerCase();
-    // Vladivostok is ALWAYS exempt and spoofed to ultra-fast 30ms ping
-    if (h.includes("vladivostok") || h.includes("vdk")) return true;
-    if (activeConfig.allowNovosibirsk && (h.includes("novosibirsk") || h.includes("nsk"))) return true;
-    if (activeConfig.allowKazakhstan && (h.includes("kazakhstan") || h.includes("almaty") || h.includes("astana") || h.includes("kz"))) return true;
+    // Vladivostok is ALWAYS exempt
+    if (h.includes("vladivostok") || h.includes("vdk") || h.includes("vvo")) return true;
+    // Novosibirsk and Kazakhstan are ONLY exempt if explicitly allowed
+    if (cfg.allowNovosibirsk && (h.includes("novosibirsk") || h.includes("nsk"))) return true;
+    if (cfg.allowKazakhstan && (h.includes("kazakhstan") || h.includes("almaty") || h.includes("astana") || h.includes("kz"))) return true;
     return false;
   }
 
   function isSpoofingEnabled(host) {
     if (!host) return false;
+    const cfg = getConfig();
     const h = String(host).toLowerCase();
-    if (h.includes("vladivostok") || h.includes("vdk")) {
-      return activeConfig.spoofVvoPing !== false;
+    if (h.includes("vladivostok") || h.includes("vdk") || h.includes("vvo")) {
+      return cfg.spoofVvoPing !== false;
     }
-    if (h.includes("novosibirsk") || h.includes("nsk")) {
-      return !!activeConfig.spoofNskPing;
+    // Only spoof if parent server is allowed AND 30ms lock toggle is on
+    if (cfg.allowNovosibirsk && (h.includes("novosibirsk") || h.includes("nsk"))) {
+      return !!cfg.spoofNskPing;
     }
-    if (h.includes("kazakhstan") || h.includes("almaty") || h.includes("astana") || h.includes("kz")) {
-      return !!activeConfig.spoofKazPing;
+    if (cfg.allowKazakhstan && (h.includes("kazakhstan") || h.includes("almaty") || h.includes("astana") || h.includes("kz"))) {
+      return !!cfg.spoofKazPing;
     }
     return false;
   }
 
   function getTargetDelay(host) {
+    const cfg = getConfig();
     const h = String(host).toLowerCase();
-    if (h.includes("vladivostok") || h.includes("vdk")) return 15; // results in ~30-35ms in FACEIT UI
+    if (h.includes("vladivostok") || h.includes("vdk") || h.includes("vvo")) return 15; // results in ~30-35ms in FACEIT UI
     if (h.includes("novosibirsk") || h.includes("nsk")) {
-      return activeConfig.spoofNskPing ? 15 : 45;
+      return cfg.spoofNskPing ? 15 : 45;
     }
     if (h.includes("kazakhstan") || h.includes("almaty") || h.includes("astana") || h.includes("kz")) {
-      return activeConfig.spoofKazPing ? 15 : 60;
+      return cfg.spoofKazPing ? 15 : 60;
     }
     return 15;
   }
@@ -90,13 +115,13 @@
 
     // If exempt (Vladivostok, Novosibirsk, Kazakhstan):
     if (isHostExempt(host)) {
-      // Fire real request in background so browser network stack creates PerformanceResourceTiming entry
-      try {
-        const bg = nativeFetch.apply(this, arguments);
-        bg.then((r) => r.clone().arrayBuffer().catch(() => {})).catch(() => {});
-      } catch {}
-
       if (isSpoofingEnabled(host)) {
+        // Fire real request in background so browser network stack creates PerformanceResourceTiming entry
+        try {
+          const bg = nativeFetch.apply(this, arguments);
+          bg.then((r) => r.clone().arrayBuffer().catch(() => {})).catch(() => {});
+        } catch {}
+
         const ms = getTargetDelay(host);
         return sleep(ms).then(() => new Response("OK", {
           status: 200,
@@ -193,6 +218,10 @@
           const ms = getTargetDelay(host);
           return clampEntry(entry, ms);
         }
+        return entry;
+      }
+      // If already delayed by fetch, do not add another 1000ms
+      if (typeof entry.duration === "number" && entry.duration >= ARTIFICIAL_DELAY_MS) {
         return entry;
       }
       return inflateEntry(entry, ARTIFICIAL_DELAY_MS);

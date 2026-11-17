@@ -28,10 +28,14 @@
   function syncConfig(config) {
     currentConfig = { ...DEFAULT_CONFIG, ...config };
     try {
+      if (document.documentElement) {
+        document.documentElement.dataset.pathfinderConfig = JSON.stringify(currentConfig);
+      }
       window.localStorage.setItem("pathfinder_config", JSON.stringify(currentConfig));
-      const evt = new CustomEvent("pathfinder:config-changed", { detail: currentConfig });
+      const evt = new CustomEvent("pathfinder:config-changed", { detail: currentConfig, bubbles: true, composed: true });
       window.dispatchEvent(evt);
       document.dispatchEvent(evt);
+      window.postMessage({ source: "pathfinder-bridge", config: currentConfig }, "*");
     } catch { }
     updateHudVisibility();
   }
@@ -150,7 +154,7 @@
     /* Bottom Notification Panels Stack */
     .stack {
       position:fixed; right:20px; bottom:20px;
-      display:flex; flex-direction:column; gap:10px; pointer-events:none;
+      display:flex; flex-direction:column-reverse; gap:10px; pointer-events:none;
       z-index:2147483647;
     }
     .panel {
@@ -318,36 +322,54 @@
   let queueInterval = null;
   let hasBeepedThisQueue = false;
 
-  let lastFindMatchElement = null;
-  let lastFindMatchRect = null;
+  function isNavigationLink(el) {
+    if (!el) return false;
+    const a = el.tagName === "A" ? el : (el.closest ? el.closest("a") : null);
+    if (!a) return false;
+    const href = a.getAttribute("href");
+    return !!href && href !== "#" && !href.startsWith("javascript:");
+  }
 
-  function trackFindMatch() {
-    const els = document.querySelectorAll("button, [role='button'], div, a");
-    for (const el of els) {
-      const t = (el.textContent || "").trim().toLowerCase();
-      if (t === "find match" || t === "マッチを探す" || t === "対戦を探す") {
-        const r = el.getBoundingClientRect();
-        if (r.width > 40 && r.height > 20 && r.top > window.innerHeight - 250) {
-          lastFindMatchElement = el;
-          lastFindMatchRect = {
-            x: Math.round(r.left + r.width / 2),
-            y: Math.round(r.top + r.height / 2),
-            left: r.left,
-            top: r.top,
-            width: r.width,
-            height: r.height
-          };
-          return;
-        }
-      }
+  function isPlayButtonSlot(el) {
+    if (!el || isNavigationLink(el)) return false;
+    // Reject anything inside navigation bars, popovers, drawers, modals
+    if (el.closest?.('[name="navbarstart"], [name="navbarend"], [class*="TabNavigationItem" i], [class*="Popover" i], [role="dialog"], [aria-modal="true"], [class*="Modal" i]')) {
+      return false;
     }
+    return !!el.closest?.(
+      '[class*="PlayButtonSlot" i], [class*="sc-39c4ac78-3"], [class*="PlayButtonWrapper" i]'
+    );
+  }
+
+  function isStartQueueButton(el) {
+    return isPlayButtonSlot(el);
+  }
+
+  function getPlayButton() {
+    const slot = document.querySelector(
+      '[class*="PlayButtonSlot" i], [class*="sc-39c4ac78-3"], [class*="PlayButtonWrapper" i]'
+    );
+    if (!slot) return null;
+    const btn = slot.querySelector('button, [role="button"]') || (slot.tagName === "BUTTON" ? slot : null);
+    if (btn && !isNavigationLink(btn)) {
+      return btn;
+    }
+    return null;
   }
 
   function clickElement(el) {
-    if (!el) return;
+    if (!el || isNavigationLink(el)) return;
     const target = (el.nodeType === Node.ELEMENT_NODE && el.closest)
-      ? (el.closest("button, [role='button'], div") || el)
+      ? (el.closest("button, [role='button']") || el)
       : el;
+    if (!target || isNavigationLink(target)) return;
+
+    if (typeof target.click === "function") {
+      try {
+        target.click();
+        return;
+      } catch {}
+    }
 
     const r = target.getBoundingClientRect ? target.getBoundingClientRect() : { left: 0, top: 0, width: 0, height: 0 };
     const cx = r.left + (r.width > 0 ? r.width / 2 : 0);
@@ -359,265 +381,97 @@
       view: window,
       clientX: cx,
       clientY: cy,
-      screenX: cx,
-      screenY: cy,
       buttons: 1
     };
-
-    const eventNames = ["pointerover", "mouseover", "pointerdown", "mousedown", "pointerup", "mouseup", "click"];
-    for (const name of eventNames) {
-      try {
-        const evt = name.startsWith("pointer")
-          ? new PointerEvent(name, { ...eventOpts, pointerId: 1, pointerType: "mouse", isPrimary: true })
-          : new MouseEvent(name, eventOpts);
-        el.dispatchEvent(evt);
-        if (target !== el) target.dispatchEvent(evt);
-      } catch {}
-    }
-    if (typeof target.click === "function") {
-      try { target.click(); } catch {}
-    }
-    if (typeof el.click === "function" && el !== target) {
-      try { el.click(); } catch {}
-    }
+    try {
+      target.dispatchEvent(new MouseEvent("click", eventOpts));
+    } catch {}
   }
 
-  // Disallowed button text (never treat general navigation or dialog buttons as queue cancel)
-  const FORBIDDEN_TEXT = [
-    "publish party", "publish", "find match", "play", "party", "create party", "join",
-    "skill level", "bracket", "brackets", "party finder", "mission", "missions", "invite",
-    "戻る", "確認", "了解", "参加", "マッチを探す", "パーティー", "公開", "settings", "設定",
-    "info", "help", "ヘルプ", "招待", "ミッション"
-  ];
-
-  function isForbiddenButton(text) {
-    const t = (text || "").trim().toLowerCase();
-    if (!t) return false;
-    return FORBIDDEN_TEXT.some((f) => t === f || t.includes(f));
-  }
-
-  function findFaceitCancelButton() {
-    // 1. Specific data-testid and aria-label selectors for leaving / cancelling queue
-    const selectors = [
-      'button[data-testid*="cancel" i]',
-      'button[data-testid*="leave" i]',
-      'button[data-testid*="queue-cancel" i]',
-      '[aria-label*="cancel queue" i]',
-      '[aria-label*="leave queue" i]',
-      '[aria-label*="キューを退出" i]',
-      '[aria-label*="キューから退出" i]',
-      '[aria-label*="マッチメイキングをキャンセル" i]',
-      '[aria-label*="cancel matchmaking" i]',
-      'button[class*="cancel" i]',
-      'button[class*="leave" i]'
-    ];
-    for (const sel of selectors) {
-      try {
-        const els = document.querySelectorAll(sel);
-        for (const btn of els) {
-          if (!btn) continue;
-          if (btn.closest('[role="dialog"], [aria-modal="true"], [class*="Modal" i], [class*="Tooltip" i]')) continue;
-          const rect = btn.getBoundingClientRect();
-          if (rect.width > 0 && rect.height > 0) {
-            const txt = (btn.textContent || "").trim().toLowerCase();
-            if (!isForbiddenButton(txt)) {
-              return btn;
-            }
-          }
-        }
-      } catch {}
-    }
-
-    // 2. Scan visible buttons for unambiguous cancel queue phrases
-    const strictCancelKeywords = [
-      "leave queue", "cancel matchmaking", "cancel queue", "stop matchmaking",
-      "キャンセル", "キューを退出", "キューから退出", "退出", "マッチメイキングをキャンセル", "検索キャンセル", "検索をキャンセル", "マッチング中止",
-      "покинуть очередь", "отменить поиск", "отменить"
-    ];
-
-    const allButtons = Array.from(document.querySelectorAll("button, [role='button']"));
-    for (const b of allButtons) {
-      if (!b) continue;
-      if (b.closest('[role="dialog"], [aria-modal="true"], [class*="Modal" i], [class*="Tooltip" i]')) continue;
-      const rect = b.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) continue;
-
-      const t = (b.textContent || "").trim().toLowerCase();
-      if (!t || isForbiddenButton(t)) continue;
-      for (const kw of strictCancelKeywords) {
-        if (t === kw || t.includes(kw)) {
-          return b;
-        }
-      }
-    }
-
-    return null;
-  }
+  let cancelCooldownUntil = 0;
 
   function cancelMatchmaking() {
-    // 1. Explicit cancel button if found
-    const explicitBtn = findFaceitCancelButton();
-    if (explicitBtn) {
-      clickElement(explicitBtn);
+    cancelCooldownUntil = Date.now() + 3500;
+    // In FACEIT, clicking the play button slot button while in queue cancels the queue
+    const playBtn = getPlayButton();
+    if (playBtn) {
+      clickElement(playBtn);
       return true;
-    }
-
-    // 2. Direct check on the remembered "FIND MATCH" div element
-    if (lastFindMatchElement && lastFindMatchElement.isConnected) {
-      const sub = lastFindMatchElement.querySelector('button, [role="button"], [aria-label*="cancel" i], [aria-label*="close" i], svg, [class*="close" i], [class*="cancel" i]');
-      if (sub) clickElement(sub);
-      clickElement(lastFindMatchElement);
-    }
-
-    // 3. Coordinate-based click on the exact location of the bottom match button
-    const targetX = lastFindMatchRect ? lastFindMatchRect.x : Math.round(window.innerWidth / 2);
-    const targetY = lastFindMatchRect ? lastFindMatchRect.y : Math.round(window.innerHeight - 80);
-
-    // Try the right side of the button (where the "X" / cancel sub-button usually is)
-    if (lastFindMatchRect) {
-      const rightX = Math.round(lastFindMatchRect.left + lastFindMatchRect.width - 25);
-      const rightEl = document.elementFromPoint(rightX, targetY);
-      if (rightEl && !isForbiddenButton(rightEl.textContent)) {
-        clickElement(rightEl);
-      }
-    }
-
-    // Try center of the button
-    const centerEl = document.elementFromPoint(targetX, targetY);
-    if (centerEl && !isForbiddenButton(centerEl.textContent)) {
-      clickElement(centerEl);
-    }
-
-    // 4. Scan bottom-center dock for any interactive candidate
-    const dockCandidates = Array.from(document.querySelectorAll("button, [role='button'], div")).filter((el) => {
-      const r = el.getBoundingClientRect();
-      return r.top >= window.innerHeight - 200 && r.width >= 30 && r.height >= 20 &&
-             r.left >= window.innerWidth * 0.25 && r.right <= window.innerWidth * 0.75;
-    });
-
-    for (const el of dockCandidates) {
-      const t = (el.textContent || "").trim().toLowerCase();
-      if (isForbiddenButton(t)) continue;
-      if (
-        t.includes("cancel") || t.includes("leave") || t.includes("stop") ||
-        t.includes("キャンセル") || t.includes("退出") || t.includes("отмен") || t.includes("покинуть") ||
-        t.includes("searching") || t.includes("matchmaking")
-      ) {
-        clickElement(el);
-        return true;
-      }
-      if (el.querySelector("svg") || el.tagName === "BUTTON") {
-        clickElement(el);
-        return true;
-      }
-    }
-
-    return true;
-  }
-
-  function isFindMatchElement(el) {
-    if (!el) return false;
-    const t = (el.innerText || el.textContent || "").trim().toLowerCase();
-    if (t === "find match" || t.includes("find match") || t === "マッチを探す" || t.includes("マッチを探す") || t === "対戦を探す") {
-      const rect = el.getBoundingClientRect();
-      return rect.width > 40 && rect.height > 20 && rect.top > window.innerHeight - 250;
     }
     return false;
   }
 
-  function restartMatchmaking(attempts = 0) {
-    // If match was found (Accept button) or modal dialog is open, do not restart!
-    if (document.querySelector('button[data-testid*="accept" i], [aria-label*="accept" i]')) return;
-    if (document.querySelector('[aria-modal="true"], [role="dialog"], [class*="Modal" i]')) return;
-
-    // 1. Scan for FIND MATCH button / div / span
-    const allCandidates = Array.from(document.querySelectorAll("button, [role='button'], div, span, a"));
-    let matchEl = null;
-    for (const el of allCandidates) {
-      if (isFindMatchElement(el)) {
-        matchEl = el.closest("button, [role='button'], div") || el;
-        break;
-      }
+  function isBlockingModalOpen() {
+    // 1. Accept match modal -> ALWAYS blocking!
+    if (document.querySelector('button[data-testid*="accept" i], [aria-label*="accept" i]')) {
+      return true;
     }
 
-    if (matchEl) {
-      lastFindMatchElement = matchEl;
-      const r = matchEl.getBoundingClientRect();
-      lastFindMatchRect = {
-        x: Math.round(r.left + r.width / 2),
-        y: Math.round(r.top + r.height / 2),
-        left: r.left,
-        top: r.top,
-        width: r.width,
-        height: r.height
-      };
-      clickElement(matchEl);
+    // 2. Visible modals / dialogs
+    const dialogs = document.querySelectorAll('[aria-modal="true"], [role="dialog"]');
+    for (const d of dialogs) {
+      if (d.getAttribute("aria-hidden") === "true") continue;
+      const r = d.getBoundingClientRect();
+      if (r.width > 250 && r.height > 150) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function isFindMatchElement(el) {
+    return isStartQueueButton(el);
+  }
+
+  function restartMatchmaking(attempts = 0) {
+    if (isBlockingModalOpen()) return;
+
+    const playBtn = getPlayButton();
+    // Only restart when button exists and NOT in queue (i.e. reset to idle)
+    if (playBtn && !isFaceitInQueue()) {
+      cancelCooldownUntil = 0;
+      clickElement(playBtn);
       startQueueTimer();
       return;
     }
 
-    // 2. Coordinate fallback at bottom-center where button was located
-    const targetX = lastFindMatchRect ? lastFindMatchRect.x : Math.round(window.innerWidth / 2);
-    const targetY = lastFindMatchRect ? lastFindMatchRect.y : Math.round(window.innerHeight - 80);
-    const el = document.elementFromPoint(targetX, targetY);
-    if (el) {
-      const clickTarget = el.closest("button, [role='button'], div") || el;
-      const t = (clickTarget.textContent || "").trim().toLowerCase();
-      if (t.includes("find match") || t.includes("マッチ") || t.includes("play")) {
-        clickElement(clickTarget);
-        startQueueTimer();
-        return;
-      }
-    }
-
-    // 3. If button hasn't re-rendered yet, retry polling every 400ms up to 10 attempts (total ~4 seconds)
-    if (attempts < 10) {
-      setTimeout(() => restartMatchmaking(attempts + 1), 400);
+    // If button hasn't re-rendered yet: retry
+    if (attempts < 15) {
+      setTimeout(() => restartMatchmaking(attempts + 1), 300);
     }
   }
 
   function isFaceitInQueue() {
-    // 1. If the "FIND MATCH" / "マッチを探す" button is visible near bottom, we are definitely NOT in queue!
-    const findMatchButtons = Array.from(document.querySelectorAll("button, [role='button'], div, a")).filter((b) => {
-      const t = (b.textContent || "").trim().toLowerCase();
-      if (t === "find match" || t === "マッチを探す" || t === "対戦を探す") {
-        const rect = b.getBoundingClientRect();
-        return rect.width > 40 && rect.height > 20 && rect.top > window.innerHeight - 250;
+    // 1. If a blocking modal dialog is open, we are NOT in queue
+    if (isBlockingModalOpen()) {
+      return false;
+    }
+
+    // 2. PlayButtonSlot inspection (100% language-independent!)
+    const slot = document.querySelector(
+      '[class*="PlayButtonSlot" i], [class*="sc-39c4ac78-3"], [class*="PlayButtonWrapper" i]'
+    );
+    if (slot) {
+      // Countdown component inside play slot
+      if (slot.querySelector('[class*="CountDownWrapper" i], [class*="sc-b58dd53c-5"]')) {
+        return true;
       }
-      return false;
-    });
-    if (findMatchButtons.length > 0) {
-      return false;
-    }
-
-    // 2. If party setup or another modal dialog is open, we are NOT in queue
-    if (document.querySelector('[aria-modal="true"], [role="dialog"], [class*="Modal" i]')) {
-      return false;
-    }
-
-    // 3. If an explicit cancel queue button is visible, we ARE in queue
-    if (findFaceitCancelButton()) return true;
-
-    // 4. Check for active matchmaking search indicators in page elements (ignoring top header)
-    const queueContainers = Array.from(document.querySelectorAll('[class*="Matchmaking" i], [class*="Queue" i], [data-testid*="matchmaking" i]'));
-    for (const c of queueContainers) {
-      const rect = c.getBoundingClientRect();
-      if (rect.top > 150 && rect.height > 20) {
-        const txt = (c.textContent || "").toLowerCase();
-        if (
-          txt.includes("searching for match") ||
-          txt.includes("matchmaking in progress") ||
-          txt.includes("finding match") ||
-          txt.includes("対戦相手を検索中") ||
-          txt.includes("対戦を検索中") ||
-          txt.includes("キュー待機中") ||
-          txt.includes("マッチを検索中") ||
-          txt.includes("поиск матча") ||
-          txt.includes("в поиске матча")
-        ) {
+      const btn = slot.querySelector('button, [role="button"]') || (slot.tagName === "BUTTON" ? slot : null);
+      if (btn) {
+        // Active timer digits e.g. "00:14"
+        const txt = (btn.innerText || btn.textContent || "").trim();
+        if (/\d+:\d+/.test(txt)) return true;
+        // Cancel "X" icon slot inside play button
+        if (btn.querySelector('[class*="EndSlot" i], [class*="sc-b58dd53c-1"]')) {
           return true;
         }
       }
+    }
+
+    // 3. Fallback: CountDownWrapper in dock
+    const cd = document.querySelector('[class*="CountDownWrapper" i], [class*="sc-b58dd53c-5"]');
+    if (cd && cd.closest('[class*="PlayBar" i], [class*="PlayButton" i]')) {
+      return true;
     }
 
     return false;
@@ -688,17 +542,15 @@
       queueProgressFill.classList.remove("warning");
     }
 
-    if (maxSec > 2 && elapsedSec >= warnSec && !hasBeepedThisQueue) {
+    if (elapsedSec >= warnSec && !hasBeepedThisQueue) {
       hasBeepedThisQueue = true;
       playWarningBeep();
-      if (!currentConfig.allowNovosibirsk) {
-        makePanel({
-          title: `キュー時間警告 / Queue Warning (${warnSec}s)`,
-          message: `まもなく設定時間の${maxSec}秒に達します。ノヴォシビルスクサーバーへの拡大を防ぐため、再検索してください。`,
-          sub: `Approaching ${maxSec}s limit. Restart your queue to prevent Novosibirsk assignment.`,
-          buttonLabel: "了解 / OK"
-        });
-      }
+      makePanel({
+        title: `キュー時間警告 / Queue Warning (${warnSec}s)`,
+        message: `まもなく設定時間の${maxSec}秒に達します。マッチング地域拡大を防ぐため、再検索してください。`,
+        sub: `Approaching ${maxSec}s limit. Restart your queue to prevent distant server assignment.`,
+        buttonLabel: "了解 / OK"
+      });
     }
 
     if (elapsedSec >= maxSec && currentConfig.autoCancelQueue) {
@@ -706,7 +558,7 @@
       stopQueueTimer();
       playWarningBeep();
 
-      const willRestart = !!currentConfig.autoRestartQueue;
+      const willRestart = !!currentConfig.autoCancelQueue && !!currentConfig.autoRestartQueue;
 
       makePanel({
         title: willRestart ? "自動再検索 / Auto-Requeuing" : "自動キャンセル / Auto-Cancelled",
@@ -722,52 +574,34 @@
       if (willRestart) {
         setTimeout(() => {
           restartMatchmaking(0);
-        }, 500);
+        }, 800);
       }
     }
   }
 
   // Intercept user clicks directly on page
   document.addEventListener("click", (e) => {
+    // Ignore programmatic / synthetic clicks from our extension
+    if (!e.isTrusted) return;
+
     const target = e.target;
-    if (!target) return;
-    const btn = target.closest("button, [role='button'], div, a") || target;
+    if (!target || isNavigationLink(target)) return;
 
-    const t = (btn.textContent || target.textContent || "").trim().toLowerCase();
-    const aria = (btn.getAttribute?.("aria-label") || target.getAttribute?.("aria-label") || "").toLowerCase();
-    const testid = (btn.getAttribute?.("data-testid") || target.getAttribute?.("data-testid") || "").toLowerCase();
-
-    // If user clicked FIND MATCH / PLAY: capture element and coords, then start queue timer!
-    if (t === "find match" || t === "マッチを探す" || t === "対戦を探す") {
-      lastFindMatchElement = btn;
-      const r = btn.getBoundingClientRect();
-      lastFindMatchRect = {
-        x: Math.round(r.left + r.width / 2),
-        y: Math.round(r.top + r.height / 2),
-        left: r.left,
-        top: r.top,
-        width: r.width,
-        height: r.height
-      };
-      startQueueTimer();
-      return;
-    }
-
-    // If user clicked cancel / leave queue manually: stop queue timer!
-    if (
-      t.includes("leave queue") || t === "cancel" || t.includes("キャンセル") || t.includes("退出") ||
-      aria.includes("leave") || aria.includes("cancel") || testid.includes("cancel") || testid.includes("leave")
-    ) {
-      if (!isForbiddenButton(t)) {
-        setTimeout(stopQueueTimer, 200);
+    // Check if user clicked inside the playbar button slot ONLY
+    if (isPlayButtonSlot(target)) {
+      cancelCooldownUntil = 0;
+      if (isFaceitInQueue()) {
+        // User clicked the play button while in queue -> manually cancelled
+        stopQueueTimer();
+      } else {
+        // User clicked the play button while idle -> starting queue
+        startQueueTimer();
       }
     }
   }, true);
 
   // Periodic poll to maintain queue state
   setInterval(() => {
-    trackFindMatch();
-
     // 1. Check if match ready (Accept button on screen)
     const acceptBtn = document.querySelector('button[data-testid*="accept" i], [aria-label*="accept" i]');
     if (acceptBtn && acceptBtn.getBoundingClientRect().width > 0) {
@@ -775,23 +609,19 @@
       return;
     }
 
+    // During cancellation cooldown, do NOT auto-start queue timer!
+    if (Date.now() < cancelCooldownUntil) {
+      return;
+    }
+
+    const inQueue = isFaceitInQueue();
     if (queueStartTime === null) {
-      if (isFaceitInQueue()) {
+      if (inQueue) {
         startQueueTimer();
       }
     } else {
-      // While timer is running, ONLY stop if FIND MATCH button is actually back on screen!
-      const hasFindMatch = Array.from(document.querySelectorAll("button, [role='button'], div, a")).some((b) => {
-        const t = (b.textContent || "").trim().toLowerCase();
-        if (t === "find match" || t === "マッチを探す" || t === "対戦を探す") {
-          const r = b.getBoundingClientRect();
-          return r.width > 50 && r.height > 20 && r.top > window.innerHeight - 250;
-        }
-        return false;
-      });
-
-      // If FIND MATCH is back on screen AND at least 2.5s have passed since search started:
-      if (hasFindMatch && (Date.now() - queueStartTime) > 2500) {
+      // While timer is running, if queue is no longer active (after 2.5s initial grace period)
+      if (!inQueue && (Date.now() - queueStartTime) > 2500) {
         stopQueueTimer();
       }
     }
@@ -800,7 +630,7 @@
   // Cross-world event listeners (listening on both document and window)
   function handleQueueStatus(e) {
     const state = e.detail?.state;
-    if (state === "SEARCHING") startQueueTimer();
+    if (state === "SEARCHING" && Date.now() >= cancelCooldownUntil) startQueueTimer();
     if (state === "MATCH_FOUND" || state === "IDLE") stopQueueTimer();
   }
   window.addEventListener(QUEUE_STATUS_EVENT, handleQueueStatus);
