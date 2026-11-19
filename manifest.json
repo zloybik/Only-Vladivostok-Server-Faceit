@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "FACEIT Ping Override — Pathfinder",
-  "version": "1.5.3",
-  "description": "Browser-side FACEIT ping override with Vladivostok server health alerts, queue protection, and RU proxy routing.",
+  "version": "1.8.0",
+  "description": "Browser-side FACEIT ping override with Vladivostok server health alerts, queue protection, RU proxy routing, and Discord alerts.",
   "permissions": [
     "storage",
     "proxy",
@@ -14,7 +14,10 @@
     "https://api.github.com/*",
     "https://*.ping.faceit.com/*",
     "https://ipapi.co/*",
-    "https://api.ipify.org/*"
+    "https://api.ipify.org/*",
+    "https://discord.com/api/webhooks/*",
+    "https://canary.discord.com/api/webhooks/*",
+    "https://ptb.discord.com/api/webhooks/*"
   ],
   "background": {
     "service_worker": "background.js"

@@ -94,6 +94,26 @@
     dispatchBoth(EVENT_SERVERS_HEALTH, states);
   }
 
+  function syncUserInfo() {
+    try {
+      for (const k of ["user", "auth", "faceit_user", "SP_USER"]) {
+        const raw = window.localStorage.getItem(k);
+        if (raw) {
+          const p = JSON.parse(raw);
+          const nick = p?.nickname || p?.user?.nickname;
+          const uid = p?.id || p?.user?.id || p?.guid;
+          if (nick && document.documentElement) {
+            document.documentElement.dataset.pathfinderUserNick = nick;
+          }
+          if (uid && document.documentElement) {
+            document.documentElement.dataset.pathfinderUserId = uid;
+          }
+        }
+      }
+    } catch {}
+  }
+  syncUserInfo();
+
   function checkQueuePayload(data) {
     try {
       if (!data || typeof data !== "object") return;
@@ -101,6 +121,10 @@
 
       // Check if match has been found / check-in
       if (payload.booking || payload.match_id || payload.state === "CHECK_IN" || payload.status === "CHECK_IN") {
+        const mid = payload.match_id || payload.booking?.match_id;
+        if (mid && document.documentElement) {
+          document.documentElement.dataset.pathfinderAcceptedMatchId = mid;
+        }
         dispatchBoth(EVENT_QUEUE_STATUS, { state: "MATCH_FOUND", payload });
       }
     } catch { }
@@ -133,12 +157,26 @@
       const result = nativeFetch.apply(this, args);
       try {
         const url = new URL(requestUrl, location.href);
-        if (url.origin === location.origin && url.pathname.includes(API_PATH) && url.pathname.endsWith("/matchmakings")) {
+        if (url.pathname.includes(API_PATH)) {
+          const userM = url.pathname.match(/\/api\/matchmaking-bff\/v1\/users\/([a-zA-Z0-9-]+)/i);
+          if (userM && userM[1] && document.documentElement) {
+            document.documentElement.dataset.pathfinderUserId = userM[1];
+          }
+        }
+        if (url.pathname.includes(API_PATH) && url.pathname.endsWith("/matchmakings")) {
           result.then((response) => {
             if (!response.ok) return;
             response.clone().json().then((json) => {
               publish(json);
               checkQueuePayload(json);
+            }).catch(() => { });
+          }).catch(() => { });
+        }
+        if (url.pathname.includes("/match/v2/match/") || url.pathname.includes("/match/v2/matches/")) {
+          result.then((response) => {
+            if (!response.ok) return;
+            response.clone().json().then((json) => {
+              dispatchBoth("pathfinder:match-room-details", json);
             }).catch(() => { });
           }).catch(() => { });
         }
@@ -164,13 +202,28 @@
 
       try {
         const url = new URL(raw, location.href);
-        if (url.origin === location.origin && url.pathname.includes(API_PATH) && url.pathname.endsWith("/matchmakings")) {
+        if (url.pathname.includes(API_PATH)) {
+          const userM = url.pathname.match(/\/api\/matchmaking-bff\/v1\/users\/([a-zA-Z0-9-]+)/i);
+          if (userM && userM[1] && document.documentElement) {
+            document.documentElement.dataset.pathfinderUserId = userM[1];
+          }
+        }
+        if (url.pathname.includes(API_PATH) && url.pathname.endsWith("/matchmakings")) {
           this.addEventListener("load", () => {
             if (this.status < 200 || this.status >= 300) return;
             try {
               const json = JSON.parse(this.responseText);
               publish(json);
               checkQueuePayload(json);
+            } catch { }
+          }, { once: true });
+        }
+        if (url.pathname.includes("/match/v2/match/") || url.pathname.includes("/match/v2/matches/")) {
+          this.addEventListener("load", () => {
+            if (this.status < 200 || this.status >= 300) return;
+            try {
+              const json = JSON.parse(this.responseText);
+              dispatchBoth("pathfinder:match-room-details", json);
             } catch { }
           }, { once: true });
         }
