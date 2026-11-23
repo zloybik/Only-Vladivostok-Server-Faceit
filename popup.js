@@ -27,7 +27,13 @@
     discordNotifySlots: false,
     discordRelayRoomChat: false,
     autoSendLanguageNotice: false,
-    languageNoticeText: "Hello team! I don't speak Russian, please info in English / Привет! Не говорю по-русски, давайте инфу на английском",
+    languageNoticeText: "Hello team! English or Japanese please / 英語または日本語でお願いします",
+    enableDiscordInbound: false,
+    discordBotToken: "",
+    discordBotChannelId: "",
+    discordBotAuthorId: "",
+    discordInboundTagPrefix: false,
+    enableDiscordVeto: true,
     enableProxy: false,
     proxyScheme: "socks5",
     proxyHost: "",
@@ -133,8 +139,26 @@
       discordSlotsSub: "満員から空きが出た際にDiscordへ通知",
       relayChatTitle: "マッチチャットのDiscord転送",
       relayChatSub: "部屋チャット（味方の発言）をDiscordへ転送（試合・ナイフラウンド開始まで有効）",
-      langNoticeTitle: "チャット言語自動送信 (英語/ロシア語)",
-      langNoticeSub: "部屋作成時に「ロシア語不可・英語希望」を自動発言",
+      discordInboundTitle: "Discord ➔ FACEIT チャット逆転送",
+      discordInboundSub: "Discordの指定チャンネルに書いた発言をチームチャットへ送信（ウォームアップ終了まで有効）",
+      discordVetoTitle: "Discord Veto (リモートマップBAN)",
+      discordVetoSub: "BAN番時にDiscordへボタン送信し、スマホからタップでBAN",
+      tBotTokenLabel: "Discord Bot Token:",
+      tBotChannelLabel: "送信先 Channel ID:",
+      tBotAuthorLabel: "あなたの Discord User ID (この人のみ許可):",
+      tInboundPrefixTitle: "[Discord] タグを付与",
+      tInboundPrefixSub: "発言の先頭に「[Discord] 」プレフィックスを付ける",
+      btnTestDiscordBot: "🧪 Bot 接続テスト",
+      btnTestDiscordVeto: "🗺️ マップBANテスト",
+      btnTestDiscordVetoServer: "🌐 サーバーBANテスト",
+      btnDemoFullVeto: "🎮 フルVetoシミュレーション (Real Match Demo)",
+      btnTestingBot: "⏳ Bot接続確認中...",
+      botTestSuccess: (name) => `✅ 接続成功！Bot: "${name}"`,
+      botTestError: (err) => `❌ 接続失敗: ${err || "Token無効"}`,
+      langNoticeTitle: "チャット言語自動送信 (英語/日本語)",
+      langNoticeSub: "部屋作成時に「英語・日本語希望」を自動発言",
+      btnTestLangNotice: "💬 現在の部屋でテスト発言",
+      btnTestingLangNotice: "⏳ 部屋でテスト中...",
       btnTestDiscord: "🔔 Discordテスト送信",
       btnTestingDiscord: "⏳ 送信中...",
       btnDemoDiscord: "🧪 有効な通知の連続デモテスト",
@@ -268,8 +292,26 @@
       discordSlotsSub: "Notify party when Vladivostok slots open up",
       relayChatTitle: "Relay Room Chat to Discord",
       relayChatSub: "Forward teammates' match room chat to Discord (active until knife round/match starts)",
+      discordInboundTitle: "Discord ➔ Team Chat (Inbound Relay)",
+      discordInboundSub: "Forward messages from Discord channel into FACEIT Team Chat (active until warmup ends)",
+      discordVetoTitle: "Discord Veto (Remote Map BAN)",
+      discordVetoSub: "Send map ban buttons to Discord on your turn to ban from phone",
+      tBotTokenLabel: "Discord Bot Token:",
+      tBotChannelLabel: "Channel ID:",
+      tBotAuthorLabel: "Your Discord User ID (whitelist only):",
+      tInboundPrefixTitle: "Prefix with [Discord] tag",
+      tInboundPrefixSub: "Prepend '[Discord] ' to messages sent into game",
+      btnTestDiscordBot: "🧪 Test Bot Connection",
+      btnTestDiscordVeto: "🗺️ Test Map Veto",
+      btnTestDiscordVetoServer: "🌐 Test Server Veto",
+      btnDemoFullVeto: "🎮 Full Veto Simulation (Real Match Demo)",
+      btnTestingBot: "⏳ Checking Bot...",
+      botTestSuccess: (name) => `✅ Connected! Bot: "${name}"`,
+      botTestError: (err) => `❌ Failed: ${err || "Invalid Token"}`,
       langNoticeTitle: "Language Barrier Auto-Message",
       langNoticeSub: "Automatically post 'I don't speak Russian, English please' when room forms",
+      btnTestLangNotice: "💬 Test Send in Current Room",
+      btnTestingLangNotice: "⏳ Testing in room...",
       btnTestDiscord: "🔔 Send Test Alert",
       btnTestingDiscord: "⏳ Sending...",
       btnDemoDiscord: "🧪 Demo Active Alerts (Sequential Test)",
@@ -417,8 +459,26 @@
     if (document.getElementById("tDiscordSlotsSub")) document.getElementById("tDiscordSlotsSub").textContent = t.discordSlotsSub;
     if (document.getElementById("tRelayChatTitle")) document.getElementById("tRelayChatTitle").textContent = t.relayChatTitle;
     if (document.getElementById("tRelayChatSub")) document.getElementById("tRelayChatSub").textContent = t.relayChatSub;
+    if (document.getElementById("tDiscordInboundTitle")) document.getElementById("tDiscordInboundTitle").textContent = t.discordInboundTitle;
+    if (document.getElementById("tDiscordInboundSub")) document.getElementById("tDiscordInboundSub").textContent = t.discordInboundSub;
+    if (document.getElementById("tDiscordVetoTitle")) document.getElementById("tDiscordVetoTitle").textContent = t.discordVetoTitle;
+    if (document.getElementById("tDiscordVetoSub")) document.getElementById("tDiscordVetoSub").textContent = t.discordVetoSub;
+    if (document.getElementById("tBotTokenLabel")) document.getElementById("tBotTokenLabel").textContent = t.tBotTokenLabel;
+    if (document.getElementById("tBotChannelLabel")) document.getElementById("tBotChannelLabel").textContent = t.tBotChannelLabel;
+    if (document.getElementById("tBotAuthorLabel")) document.getElementById("tBotAuthorLabel").textContent = t.tBotAuthorLabel;
+    if (document.getElementById("tInboundPrefixTitle")) document.getElementById("tInboundPrefixTitle").textContent = t.tInboundPrefixTitle;
+    if (document.getElementById("tInboundPrefixSub")) document.getElementById("tInboundPrefixSub").textContent = t.tInboundPrefixSub;
+    if (document.getElementById("btnTestDiscordBot")) document.getElementById("btnTestDiscordBot").textContent = t.btnTestDiscordBot;
+    if (document.getElementById("btnTestDiscordVeto")) document.getElementById("btnTestDiscordVeto").textContent = t.btnTestDiscordVeto;
+    if (document.getElementById("btnTestDiscordVetoServer")) document.getElementById("btnTestDiscordVetoServer").textContent = t.btnTestDiscordVetoServer;
+    if (document.getElementById("btnDemoFullVeto")) document.getElementById("btnDemoFullVeto").textContent = t.btnDemoFullVeto;
+    if (btnToggleBotMask) {
+      const isPass = elDiscordBotToken ? elDiscordBotToken.type === "password" : true;
+      btnToggleBotMask.textContent = isPass ? (lang === "ja" ? "表示" : "Show") : (lang === "ja" ? "隠す" : "Hide");
+    }
     if (document.getElementById("tLangNoticeTitle")) document.getElementById("tLangNoticeTitle").textContent = t.langNoticeTitle;
     if (document.getElementById("tLangNoticeSub")) document.getElementById("tLangNoticeSub").textContent = t.langNoticeSub;
+    if (document.getElementById("btnTestLangNotice")) document.getElementById("btnTestLangNotice").textContent = t.btnTestLangNotice;
     if (document.getElementById("btnTestDiscord")) document.getElementById("btnTestDiscord").textContent = t.btnTestDiscord;
     if (document.getElementById("btnDemoDiscord")) document.getElementById("btnDemoDiscord").textContent = t.btnDemoDiscord;
 
@@ -476,9 +536,23 @@
   const elDiscordNotifyServerIp = document.getElementById("discordNotifyServerIp");
   const elDiscordNotifySlots = document.getElementById("discordNotifySlots");
   const elDiscordRelayRoomChat = document.getElementById("discordRelayRoomChat");
+  const elEnableDiscordInbound = document.getElementById("enableDiscordInbound");
+  const discordInboundBody = document.getElementById("discordInboundBody");
+  const elDiscordBotToken = document.getElementById("discordBotToken");
+  const btnToggleBotMask = document.getElementById("btnToggleBotMask");
+  const elDiscordBotChannelId = document.getElementById("discordBotChannelId");
+  const elDiscordBotAuthorId = document.getElementById("discordBotAuthorId");
+  const elDiscordInboundTagPrefix = document.getElementById("discordInboundTagPrefix");
+  const elEnableDiscordVeto = document.getElementById("enableDiscordVeto");
+  const btnTestDiscordBot = document.getElementById("btnTestDiscordBot");
+  const btnTestDiscordVeto = document.getElementById("btnTestDiscordVeto");
+  const btnTestDiscordVetoServer = document.getElementById("btnTestDiscordVetoServer");
+  const btnDemoFullVeto = document.getElementById("btnDemoFullVeto");
+  const discordBotNotice = document.getElementById("discordBotNotice");
   const elAutoSendLanguageNotice = document.getElementById("autoSendLanguageNotice");
   const langNoticeCustomBody = document.getElementById("langNoticeCustomBody");
   const elLanguageNoticeText = document.getElementById("languageNoticeText");
+  const btnTestLangNotice = document.getElementById("btnTestLangNotice");
   const btnTestDiscord = document.getElementById("btnTestDiscord");
   const btnDemoDiscord = document.getElementById("btnDemoDiscord");
   const discordNotice = document.getElementById("discordNotice");
@@ -563,6 +637,13 @@
     if (discordConfigBody) {
       discordConfigBody.style.opacity = on ? "1" : "0.35";
       discordConfigBody.style.pointerEvents = on ? "auto" : "none";
+    }
+  }
+
+  function updateDiscordInboundVisibility() {
+    const on = !!(elEnableDiscordInbound && elEnableDiscordInbound.checked);
+    if (discordInboundBody) {
+      discordInboundBody.style.display = on ? "block" : "none";
     }
   }
 
@@ -690,8 +771,14 @@
       discordNotifyServerIp: elDiscordNotifyServerIp ? elDiscordNotifyServerIp.checked : false,
       discordNotifySlots: elDiscordNotifySlots ? elDiscordNotifySlots.checked : false,
       discordRelayRoomChat: elDiscordRelayRoomChat ? elDiscordRelayRoomChat.checked : false,
+      enableDiscordInbound: elEnableDiscordInbound ? elEnableDiscordInbound.checked : false,
+      discordBotToken: elDiscordBotToken ? elDiscordBotToken.value.trim() : "",
+      discordBotChannelId: elDiscordBotChannelId ? elDiscordBotChannelId.value.trim() : "",
+      discordBotAuthorId: elDiscordBotAuthorId ? elDiscordBotAuthorId.value.trim() : "",
+      discordInboundTagPrefix: elDiscordInboundTagPrefix ? elDiscordInboundTagPrefix.checked : false,
+      enableDiscordVeto: elEnableDiscordVeto ? elEnableDiscordVeto.checked : true,
       autoSendLanguageNotice: elAutoSendLanguageNotice ? elAutoSendLanguageNotice.checked : false,
-      languageNoticeText: elLanguageNoticeText ? elLanguageNoticeText.value.trim() : "Hello team! I don't speak Russian, please info in English / Привет! Не говорю по-русски, давайте инфу на английском",
+      languageNoticeText: elLanguageNoticeText ? elLanguageNoticeText.value.trim() : "Hello team! English or Japanese please / 英語または日本語でお願いします",
       enableProxy: elEnableProxy.checked,
       proxyScheme: elProxyScheme.value,
       proxyHost: elProxyHost.value.trim(),
@@ -705,6 +792,7 @@
       updateAutoCancelVisibility();
       updateSubtogglesVisibility();
       updateDiscordVisibility();
+      updateDiscordInboundVisibility();
       updateProxyUI(config);
     });
   }
@@ -841,8 +929,15 @@
     if (elDiscordNotifyServerIp) elDiscordNotifyServerIp.checked = !!config.discordNotifyServerIp;
     if (elDiscordNotifySlots) elDiscordNotifySlots.checked = !!config.discordNotifySlots;
     if (elDiscordRelayRoomChat) elDiscordRelayRoomChat.checked = !!config.discordRelayRoomChat;
+    if (elEnableDiscordInbound) elEnableDiscordInbound.checked = !!config.enableDiscordInbound;
+    if (elDiscordBotToken) elDiscordBotToken.value = config.discordBotToken || "";
+    if (elDiscordBotChannelId) elDiscordBotChannelId.value = config.discordBotChannelId || "";
+    if (elDiscordBotAuthorId) elDiscordBotAuthorId.value = config.discordBotAuthorId || "";
+    if (elDiscordInboundTagPrefix) elDiscordInboundTagPrefix.checked = !!config.discordInboundTagPrefix;
+    if (elEnableDiscordVeto) elEnableDiscordVeto.checked = config.enableDiscordVeto !== false;
+    updateDiscordInboundVisibility();
     if (elAutoSendLanguageNotice) elAutoSendLanguageNotice.checked = !!config.autoSendLanguageNotice;
-    if (elLanguageNoticeText) elLanguageNoticeText.value = config.languageNoticeText || "Hello team! I don't speak Russian, please info in English / Привет! Не говорю по-русски, давайте инфу на английском";
+    if (elLanguageNoticeText) elLanguageNoticeText.value = config.languageNoticeText || "Hello team! English or Japanese please / 英語または日本語でお願いします";
     updateLanguageNoticeVisibility();
     updateWebhookBadge();
 
@@ -878,6 +973,12 @@
     elDiscordNotifyServerIp,
     elDiscordNotifySlots,
     elDiscordRelayRoomChat,
+    elEnableDiscordInbound,
+    elDiscordBotToken,
+    elDiscordBotChannelId,
+    elDiscordBotAuthorId,
+    elDiscordInboundTagPrefix,
+    elEnableDiscordVeto,
     elAutoSendLanguageNotice,
     elLanguageNoticeText,
     elEnableProxy,
@@ -907,6 +1008,186 @@
     elEnableDiscordAlerts.addEventListener("change", () => {
       updateDiscordVisibility();
       saveSettings();
+    });
+  }
+
+  if (elEnableDiscordInbound) {
+    elEnableDiscordInbound.addEventListener("change", () => {
+      updateDiscordInboundVisibility();
+      saveSettings();
+    });
+  }
+
+  if (btnToggleBotMask && elDiscordBotToken) {
+    btnToggleBotMask.addEventListener("click", () => {
+      const isPass = elDiscordBotToken.type === "password";
+      elDiscordBotToken.type = isPass ? "text" : "password";
+      const isJa = currentLang === "ja";
+      btnToggleBotMask.textContent = isPass
+        ? (isJa ? "隠す" : "Hide")
+        : (isJa ? "表示" : "Show");
+    });
+  }
+
+  if (btnTestDiscordBot) {
+    btnTestDiscordBot.addEventListener("click", () => {
+      const t = I18N[currentLang] || I18N.ja;
+      const botToken = elDiscordBotToken ? elDiscordBotToken.value.trim() : "";
+      const channelId = elDiscordBotChannelId ? elDiscordBotChannelId.value.trim() : "";
+      const authorId = elDiscordBotAuthorId ? elDiscordBotAuthorId.value.trim() : "";
+      const tagPrefix = elDiscordInboundTagPrefix ? elDiscordInboundTagPrefix.checked : false;
+
+      if (!botToken) {
+        if (discordBotNotice) {
+          discordBotNotice.style.display = "block";
+          discordBotNotice.textContent = t.botTestError("Token is empty");
+          discordBotNotice.style.color = "#f87171";
+        }
+        return;
+      }
+      saveSettings();
+      btnTestDiscordBot.disabled = true;
+      btnTestDiscordBot.textContent = t.btnTestingBot;
+
+      chrome.runtime.sendMessage({ type: "TEST_DISCORD_BOT", botToken, channelId }, (res) => {
+        btnTestDiscordBot.disabled = false;
+        btnTestDiscordBot.textContent = t.btnTestDiscordBot;
+        if (discordBotNotice) {
+          discordBotNotice.style.display = "block";
+          if (res?.ok && res.user) {
+            const extra = channelId ? " (Channel OK)" : "";
+            discordBotNotice.textContent = t.botTestSuccess(res.user.username + extra);
+            discordBotNotice.style.color = "#4ade80";
+            sendToFaceitTabs({
+              type: "PATHFINDER_TEST_DISCORD_INBOUND",
+              botToken,
+              channelId,
+              authorId,
+              tagPrefix
+            });
+          } else {
+            discordBotNotice.textContent = t.botTestError(res?.error || res?.status || "Connection error");
+            discordBotNotice.style.color = "#f87171";
+          }
+        }
+      });
+    });
+  }
+
+  function triggerVetoTest(phase, entities, btn) {
+    const botToken = elDiscordBotToken ? elDiscordBotToken.value.trim() : "";
+    const channelId = elDiscordBotChannelId ? elDiscordBotChannelId.value.trim() : "";
+    if (!botToken || !channelId) {
+      if (discordBotNotice) {
+        discordBotNotice.style.display = "block";
+        discordBotNotice.textContent = "Bot Token / Channel ID を入力してください";
+        discordBotNotice.style.color = "#f87171";
+      }
+      return;
+    }
+    saveSettings();
+    btn.disabled = true;
+    const origText = btn.textContent;
+    btn.textContent = "⏳ 送信中...";
+
+    // Spawn interactive Test Arena in FACEIT tabs so the user can verify the DOM click live!
+    try {
+      chrome.tabs.query({ url: "*://*.faceit.com/*" }, (tabs) => {
+        if (Array.isArray(tabs)) {
+          tabs.forEach(t => {
+            if (t?.id) chrome.tabs.sendMessage(t.id, { type: "PATHFINDER_SPAWN_TEST_VETO_ARENA", phase }).catch(() => {});
+          });
+        }
+      });
+    } catch {}
+
+    chrome.runtime.sendMessage({
+      type: "SEND_DISCORD_VETO_PROMPT",
+      channelId,
+      botToken,
+      matchId: "test-match",
+      phase,
+      entities
+    }, (res) => {
+      btn.disabled = false;
+      btn.textContent = origText;
+      if (discordBotNotice) {
+        discordBotNotice.style.display = "block";
+        if (res?.ok) {
+          discordBotNotice.textContent = `✅ ${phase === "location" ? "サーバー" : "マップ"} Veto ボタンを送信しました！Discordを確認してください`;
+          discordBotNotice.style.color = "#4ade80";
+        } else {
+          discordBotNotice.textContent = "❌ 送信失敗: " + (res?.error || res?.status || "Error");
+          discordBotNotice.style.color = "#f87171";
+        }
+      }
+    });
+  }
+
+  if (btnTestDiscordVeto) {
+    btnTestDiscordVeto.addEventListener("click", () => {
+      triggerVetoTest("map", [
+        { name: "Mirage", class_name: "de_mirage" },
+        { name: "Dust2", class_name: "de_dust2" },
+        { name: "Cache", class_name: "de_cache" },
+        { name: "Nuke", class_name: "de_nuke" }
+      ], btnTestDiscordVeto);
+    });
+  }
+
+  if (btnTestDiscordVetoServer) {
+    btnTestDiscordVetoServer.addEventListener("click", () => {
+      triggerVetoTest("location", [
+        { name: "Germany", class_name: "germany" },
+        { name: "Finland", class_name: "finland" },
+        { name: "Sweden", class_name: "sweden" },
+        { name: "Singapore", class_name: "singapore" }
+      ], btnTestDiscordVetoServer);
+    });
+  }
+
+  if (btnDemoFullVeto) {
+    btnDemoFullVeto.addEventListener("click", () => {
+      const botToken = elDiscordBotToken ? elDiscordBotToken.value.trim() : "";
+      const channelId = elDiscordBotChannelId ? elDiscordBotChannelId.value.trim() : "";
+      if (!botToken || !channelId) {
+        if (discordBotNotice) {
+          discordBotNotice.style.display = "block";
+          discordBotNotice.textContent = "Bot Token / Channel ID を入力してください";
+          discordBotNotice.style.color = "#f87171";
+        }
+        return;
+      }
+      saveSettings();
+      btnDemoFullVeto.disabled = true;
+      const origText = btnDemoFullVeto.textContent;
+      btnDemoFullVeto.textContent = "⏳ シミュレーション起動中...";
+
+      try {
+        chrome.tabs.query({ url: "*://*.faceit.com/*" }, (tabs) => {
+          btnDemoFullVeto.disabled = false;
+          btnDemoFullVeto.textContent = origText;
+          if (Array.isArray(tabs) && tabs.length > 0) {
+            tabs.forEach(t => {
+              if (t?.id) chrome.tabs.sendMessage(t.id, { type: "PATHFINDER_START_FULL_VETO_SIM" }).catch(() => {});
+            });
+            if (discordBotNotice) {
+              discordBotNotice.style.display = "block";
+              discordBotNotice.textContent = "🎮 FACEITタブでシミュレーションを開始しました！Discordを確認してください";
+              discordBotNotice.style.color = "#c084fc";
+            }
+          } else {
+            if (discordBotNotice) {
+              discordBotNotice.style.display = "block";
+              discordBotNotice.textContent = "⚠️ FACEITのタブ (faceit.com) を開いてから実行してください";
+              discordBotNotice.style.color = "#fbbf24";
+            }
+          }
+        });
+      } catch (err) {
+        btnDemoFullVeto.disabled = false;
+        btnDemoFullVeto.textContent = origText;
+      }
     });
   }
 
@@ -1152,6 +1433,22 @@
       setTimeout(() => { btnTestQueue.textContent = origText; }, 2500);
 
       sendToFaceitTabs({ type: "PATHFINDER_TEST_QUEUE" });
+    });
+  }
+
+  if (btnTestLangNotice) {
+    btnTestLangNotice.addEventListener("click", () => {
+      saveSettings();
+      const t = I18N[currentLang] || I18N.ja;
+      const origText = btnTestLangNotice.textContent;
+      btnTestLangNotice.textContent = t.btnTestingLangNotice;
+      btnTestLangNotice.disabled = true;
+      setTimeout(() => {
+        btnTestLangNotice.textContent = origText;
+        btnTestLangNotice.disabled = false;
+      }, 3000);
+
+      sendToFaceitTabs({ type: "PATHFINDER_TEST_LANG_NOTICE" });
     });
   }
 

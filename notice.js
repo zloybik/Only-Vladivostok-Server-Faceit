@@ -57,11 +57,11 @@
   }
 
   function safeGetVersion() {
-    if (!isContextValid()) return "1.8.0";
+    if (!isContextValid()) return "1.9.0";
     try {
-      return chrome.runtime.getManifest()?.version || "1.8.0";
+      return chrome.runtime.getManifest()?.version || "1.9.0";
     } catch {
-      return "1.8.0";
+      return "1.9.0";
     }
   }
 
@@ -90,7 +90,13 @@
     discordNotifySlots: false,
     discordRelayRoomChat: false,
     autoSendLanguageNotice: false,
-    languageNoticeText: "Hello team! I don't speak Russian, please info in English / Привет! Не говорю по-русски, давайте инфу на английском"
+    languageNoticeText: "Hello team! English or Japanese please / 英語または日本語でお願いします",
+    enableDiscordInbound: false,
+    discordBotToken: "",
+    discordBotChannelId: "",
+    discordBotAuthorId: "",
+    discordInboundTagPrefix: false,
+    enableDiscordVeto: true
   };
 
   let currentConfig = { ...DEFAULT_CONFIG };
@@ -168,6 +174,87 @@
               stopQueueTimer();
             }
           }, 10000);
+        }
+        if (msg?.type === "PATHFINDER_TEST_LANG_NOTICE") {
+          const matchIdMatch = location.pathname.match(/\/room\/([a-zA-Z0-9_-]+)/i);
+          const currentMatchId = matchIdMatch ? matchIdMatch[1] : null;
+          if (!currentMatchId) {
+            makePanel({
+              title: "💬 言語通知テスト / Language Notice Test",
+              message: "FACEITのマッチルーム画面（/cs2/room/...）を開いた状態でテストしてください。",
+              sub: "Please open a match room page before testing this feature.",
+              buttonLabel: "OK"
+            });
+          } else {
+            makePanel({
+              title: "💬 言語通知テスト実行中 / Testing Language Notice",
+              message: "チャット入力欄を検出してメッセージを送信します...",
+              sub: "Searching for chat input and sending test notice to Team Chat...",
+              buttonLabel: "OK"
+            });
+            trySendLanguageNotice(currentMatchId, true);
+          }
+        }
+        if (msg?.type === "PATHFINDER_TEST_DISCORD_INBOUND") {
+          const matchIdMatch = location.pathname.match(/\/room\/([a-zA-Z0-9_-]+)/i);
+          const currentMatchId = matchIdMatch ? matchIdMatch[1] : "test-room";
+          inboundTestModeExpiry = Date.now() + 60000;
+          makePanel({
+            title: "🧪 Discord ➔ FACEIT チャット逆転送テスト",
+            message: "Discordでメッセージを送信してください！チームチャットへ即座に転送されます（60秒間有効）。",
+            sub: "Type a message in Discord now! It will be typed into Team Chat (active for 60s).",
+            buttonLabel: "OK"
+          });
+          if (msg.botToken) currentConfig.discordBotToken = msg.botToken;
+          if (msg.channelId) currentConfig.discordBotChannelId = msg.channelId;
+          if (msg.authorId !== undefined) currentConfig.discordBotAuthorId = msg.authorId;
+          if (msg.tagPrefix !== undefined) currentConfig.discordInboundTagPrefix = msg.tagPrefix;
+          currentConfig.enableDiscordInbound = true;
+
+          initDiscordInboundBridge(currentMatchId, true);
+        }
+        if (msg?.type === "PATHFINDER_INBOUND_GATEWAY_MSG" && msg.message) {
+          enqueueInboundDiscordMessage(msg.message);
+        }
+        if (msg?.type === "PATHFINDER_SPAWN_TEST_VETO_ARENA") {
+          spawnVetoTestArena(msg.phase || "map");
+        }
+        if (msg?.type === "PATHFINDER_START_FULL_VETO_SIM") {
+          startFullVetoSimulation();
+        }
+        if (msg?.type === "PATHFINDER_EXECUTE_VETO_BAN") {
+          console.log("%c[Pathfinder Veto] Received remote ban command from Discord:", "color: #f43f5e; font-weight: bold;", msg.name, msg.className);
+          if (msg.matchId === "sim-match" && activeSimulation) {
+            handleSimulationBan(msg.name, msg.className);
+            return;
+          }
+          const isTest = msg.matchId === "test-match" || !location.pathname.includes("/room/");
+          if (isTest && !document.getElementById("pathfinder-veto-test-arena")) {
+            spawnVetoTestArena(msg.phase || "map");
+          }
+          const success = executeVetoBanInDom(msg.name, msg.className, msg.phase);
+          if (success) {
+            makePanel({
+              title: "🚫 FACEIT Veto (Discord Remote)",
+              message: `${msg.name || msg.className} をBANしました！ / Banned!`,
+              sub: "RePeek DOM click 成功 (Discord Gateway 連携)",
+              buttonLabel: "OK"
+            });
+          } else if (isTest) {
+            makePanel({
+              title: "🧪 Veto Test (Discord Remote)",
+              message: `DiscordからのBANリクエストを受信: ${msg.name || msg.className}`,
+              sub: "本番マッチ（/room/...）では自動でマップがBANされます。",
+              buttonLabel: "OK"
+            });
+          } else {
+            makePanel({
+              title: "⚠️ Veto Ban Failed",
+              message: `${msg.name || msg.className} のBAN要素が見つかりませんでした`,
+              sub: "Could not find map/location element in DOM",
+              buttonLabel: "OK"
+            });
+          }
         }
       });
     }
@@ -949,14 +1036,31 @@
     }
   }
 
+  let cachedMyNick = "";
+  let cachedMyId = "";
+
   function getCurrentUserInfo() {
-    let id = document.documentElement?.dataset?.pathfinderUserId || "";
-    let nick = document.documentElement?.dataset?.pathfinderUserNick || "";
+    let id = document.documentElement?.dataset?.pathfinderUserId || cachedMyId || "";
+    let nick = document.documentElement?.dataset?.pathfinderUserNick || cachedMyNick || "";
     const acceptedMid = document.documentElement?.dataset?.pathfinderAcceptedMatchId || "";
 
     if (!id || !nick) {
+      // 1. Redux Persist (modern FACEIT storage)
       try {
-        for (const k of ["user", "auth", "faceit_user", "SP_USER"]) {
+        const persist = window.localStorage.getItem("persist:root");
+        if (persist) {
+          const root = JSON.parse(persist);
+          if (root.auth) {
+            const auth = JSON.parse(root.auth);
+            const u = auth?.user;
+            if (!id) id = u?.id || u?.guid || "";
+            if (!nick) nick = u?.nickname || u?.name || "";
+          }
+        }
+      } catch {}
+
+      try {
+        for (const k of ["user", "auth", "faceit_user", "SP_USER", "FACEIT_AUTH_USER"]) {
           const raw = window.localStorage.getItem(k);
           if (raw) {
             const p = JSON.parse(raw);
@@ -968,13 +1072,19 @@
     }
     if (!nick) {
       try {
-        const playerLink = document.querySelector('a[href*="/players/"]');
-        if (playerLink) {
-          const m = playerLink.getAttribute("href").match(/\/players\/([^/?#]+)/i);
-          if (m && m[1]) nick = decodeURIComponent(m[1]);
+        const playerLinks = document.querySelectorAll('a[href*="/players/"], [data-testid*="user-nav"] a, [data-testid*="profile"] a');
+        for (const link of playerLinks) {
+          const href = link.getAttribute("href") || "";
+          const m = href.match(/\/players\/([^/?#]+)/i);
+          if (m && m[1] && m[1] !== "index") {
+            nick = decodeURIComponent(m[1]);
+            break;
+          }
         }
       } catch {}
     }
+    if (nick) cachedMyNick = nick;
+    if (id) cachedMyId = id;
     return { id, nick, acceptedMid };
   }
 
@@ -1520,19 +1630,261 @@
   const sentLanguageNoticeRooms = new Set();
   let langNoticeRetryTimer = null;
 
-  function trySendLanguageNotice(matchId) {
+  function isChatSidebarVisible() {
+    try {
+      const sb = document.querySelector('div[class*="ChatSidebarContainer" i], div[class*="ChatSidebar" i], aside[class*="ChatSidebar" i], div[class*="chat-sidebar" i]');
+      if (!sb || !sb.isConnected) return false;
+      const rect = sb.getBoundingClientRect();
+      const style = getComputedStyle(sb);
+      return rect.width > 120 && rect.height > 120 && rect.right > 0 && rect.left < window.innerWidth &&
+             style.visibility !== "hidden" && style.display !== "none" && style.opacity !== "0";
+    } catch {
+      return false;
+    }
+  }
+
+  function ensureChatSidebarOpen() {
+    if (isChatSidebarVisible()) return; // Already open, never toggle!
+    try {
+      // 1. Header / Navigation rail chat toggle buttons
+      const btn = document.querySelector(
+        'div[class*="MainHeader__ChatButtonContainer" i] button, ' +
+        'div[class*="LocalNavigationWrapper" i] div[class*="MainHeader__ChatButtonContainer" i] button, ' +
+        'button[aria-label*="chat" i], button[aria-label*="チャット" i], ' +
+        'button[data-testid*="chat-toggle" i], button[data-testid*="chat-button" i], [data-testid*="chat" i] button, ' +
+        'div[class*="NavigationRail" i] button, button[class*="ChatToggle" i]'
+      );
+      if (btn && btn.isConnected) {
+        btn.click();
+        return;
+      }
+
+      // 2. Fallback: any button containing an SVG chat icon or title with chat
+      const fallbackBtn = Array.from(document.querySelectorAll('button')).find(b => {
+        const title = (b.getAttribute('title') || b.getAttribute('aria-label') || '').toLowerCase();
+        return title.includes('chat') || title.includes('チャット');
+      });
+      if (fallbackBtn && fallbackBtn.isConnected) {
+        fallbackBtn.click();
+      }
+    } catch {}
+  }
+
+  function isButtonExcluded(btn) {
+    if (!btn || !btn.isConnected) return true;
+    try {
+      // Exclude emoji, gif, image, attachment, and form action buttons
+      const label = (btn.getAttribute("aria-label") || btn.getAttribute("title") || "").toLowerCase();
+      const cls = (btn.className || "").toString().toLowerCase();
+      if (/emoji|emote|smiley|gif|attach|image|photo|upload|sticker/i.test(label) || /emoji|emote|gif|attach/i.test(cls)) {
+        return true;
+      }
+      if (btn.closest('form, footer, [class*="InputContainer" i], [class*="Toolbar" i], [class*="ActionContainer" i], [class*="actions" i]')) {
+        return true;
+      }
+    } catch {}
+    return false;
+  }
+
+  function dismissEmojiPicker() {
+    try {
+      const picker = document.querySelector('[class*="EmojiPicker" i], [class*="emoji-picker" i], [class*="EmojiMart" i], [data-testid*="emoji-picker" i], [id*="emoji-picker" i]');
+      if (picker && picker.isConnected) {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true }));
+      }
+    } catch {}
+  }
+
+  function ensureTeamSectionExpanded() {
+    try {
+      // 1. Look for explicit TeamCollapseButton
+      const teamCollapseBtns = Array.from(document.querySelectorAll(
+        'button[class*="TeamCollapseButton" i], button[class*="ChatSection__Team" i], [data-testid*="team-collapse" i], [data-testid*="collapse-team" i]'
+      )).filter(b => !isButtonExcluded(b));
+
+      for (const btn of teamCollapseBtns) {
+        if (btn.getAttribute("aria-expanded") === "false") {
+          btn.click();
+          return true;
+        }
+      }
+
+      // 2. Chat sections containing Team / チーム
+      const sections = Array.from(document.querySelectorAll('[class*="ChatSection__Container" i], section[class*="chat" i], div[class*="ChatSection" i]'));
+      for (const sec of sections) {
+        const headerEl = sec.querySelector('[class*="ChatSection__Header" i], [class*="Header" i], h6, header');
+        const headerText = headerEl?.textContent || "";
+        if (/チーム|team/i.test(headerText)) {
+          // Strictly look inside the header for accordion toggle button
+          const headerBtn = headerEl?.querySelector('button') || sec.querySelector('button[class*="Collapse" i], button[class*="Expand" i], button[aria-label*="collapse" i], button[aria-label*="expand" i], button[aria-label*="展開" i], button[aria-label*="折りたた" i]');
+          if (headerBtn && !isButtonExcluded(headerBtn) && headerBtn.getAttribute("aria-expanded") === "false") {
+            headerBtn.click();
+            return true;
+          }
+        }
+      }
+
+      // 3. If 2 sections exist, check if 2nd section (Team Chat) has collapsed button strictly in its header
+      if (sections.length >= 2) {
+        const secHeader = sections[1].querySelector('[class*="ChatSection__Header" i], [class*="Header" i], h6, header');
+        const secondSecBtn = secHeader?.querySelector('button') || sections[1].querySelector('button[class*="Collapse" i], button[class*="Expand" i]');
+        if (secondSecBtn && !isButtonExcluded(secondSecBtn) && secondSecBtn.getAttribute("aria-expanded") === "false") {
+          secondSecBtn.click();
+          return true;
+        }
+      }
+    } catch (err) {
+      console.warn("[Pathfinder] Error expanding team chat section:", err);
+    }
+    return false;
+  }
+
+  function findTeamChatInput() {
+    // 1. Check ChatSection__Container specifically containing "チーム" or "team" in header
+    try {
+      const sections = Array.from(document.querySelectorAll('[class*="ChatSection__Container" i]'));
+      for (const sec of sections) {
+        const headerText = sec.querySelector('[class*="ChatSection__Header" i], h6, header')?.textContent || "";
+        if (/チーム|team/i.test(headerText)) {
+          const inp = sec.querySelector('textarea');
+          if (inp && inp.isConnected && (inp.offsetParent !== null || inp.getClientRects().length > 0)) {
+            return inp;
+          }
+        }
+      }
+
+      // 2. Through TeamCollapseButton (explicitly marked with "Team")
+      const teamBtn = document.querySelector('[class*="TeamCollapseButton" i], [class*="ChatSection__Team" i]');
+      if (teamBtn) {
+        const sec = teamBtn.closest('[class*="ChatSection__Container" i], section, div');
+        const inp = sec?.querySelector('textarea');
+        if (inp && inp.isConnected && (inp.offsetParent !== null || inp.getClientRects().length > 0)) {
+          return inp;
+        }
+      }
+
+      // 3. Through scrollable-container-team
+      const teamList = document.querySelector('[id*="scrollable-container-team" i]');
+      if (teamList) {
+        const sec = teamList.closest('[class*="ChatSection__Container" i], [class*="ChatContainer" i], div[class*="RrW8Nq_outerContainer" i]') ||
+                    teamList.parentElement?.parentElement?.parentElement;
+        const inp = sec?.querySelector('textarea');
+        if (inp && inp.isConnected && (inp.offsetParent !== null || inp.getClientRects().length > 0)) {
+          return inp;
+        }
+      }
+
+      // 4. If exactly 2 ChatSection__Containers exist, the second one (index 1) is ALWAYS Team Chat
+      if (sections.length >= 2) {
+        const inp = sections[1].querySelector('textarea');
+        if (inp && inp.isConnected && (inp.offsetParent !== null || inp.getClientRects().length > 0)) {
+          return inp;
+        }
+      }
+
+      // 5. Fallback: all visible textareas in ChatSidebar (strictly bottom one, NEVER top Room Chat)
+      const allTextareas = Array.from(document.querySelectorAll('div[class*="ChatSidebar" i] textarea, textarea[enterkeyhint="send"]'))
+        .filter(t => t.isConnected && (t.offsetParent !== null || t.getClientRects().length > 0));
+      if (allTextareas.length >= 2) {
+        return allTextareas[allTextareas.length - 1];
+      }
+
+      // If only 1 textarea is found, strictly verify it is NOT Room Chat
+      if (allTextareas.length === 1) {
+        const parentSec = allTextareas[0].closest('[class*="ChatSection__Container" i]');
+        const headerText = parentSec?.querySelector('[class*="ChatSection__Header" i], h6')?.textContent || "";
+        if (/ルーム|room\s*chat/i.test(headerText)) {
+          console.warn("[Pathfinder] Only Room Chat input is found; aborting to avoid sending into global chat!");
+          return null;
+        }
+        return allTextareas[0];
+      }
+    } catch (err) {
+      console.warn("[Pathfinder] Error locating Team Chat input:", err);
+    }
+
+    return null;
+  }
+
+  let latestMatchRoomState = null;
+
+  function isMatchWarmupActive() {
+    return Array.from(document.querySelectorAll('button, a, div')).some(el => {
+      const txt = (el.textContent || '').trim();
+      return /CONNECT TO SERVER|サーバーに接続|サーバーへ接続|connect\s+[0-9]{1,3}\.[0-9]{1,3}|接続待機|Waiting for players/i.test(txt);
+    });
+  }
+
+  function isMatchLiveOrFinished(matchData) {
+    const state = String(matchData?.state || matchData?.status || latestMatchRoomState || "").toUpperCase();
+    if (state === "FINISHED" || state === "CLOSED" || state === "CANCELLED") {
+      return true;
+    }
+    // Detect finished match elements in DOM (buttons: Watch Demo / Return to matchmaking)
+    const finishedButtons = Array.from(document.querySelectorAll('button, a')).find(el => {
+      const txt = (el.textContent || '').trim();
+      return /デモを見る|watch\s*demo|マッチメイキングへ戻る|return\s*to\s*matchmaking|back\s*to\s*matchmaking/i.test(txt);
+    });
+    if (finishedButtons) return true;
+
+    // If warmup / connect phase is still active, match is NOT live yet (players still connecting)
+    if (isMatchWarmupActive()) {
+      return false;
+    }
+
+    if (state === "ONGOING") {
+      return true;
+    }
+
+    // Detect live in-game match / knife round indicators in DOM
+    const liveEl = document.querySelector('[class*="LiveIndicator"], [class*="Scoreboard"], [class*="MatchScore"], [class*="live-indicator"], [data-testid*="scoreboard"], span[class*="LiveBadge"]');
+    if (liveEl) return true;
+    return false;
+  }
+
+  function isMatchInLiveGame(matchData) {
+    return isMatchLiveOrFinished(matchData);
+  }
+
+  function trySendLanguageNotice(matchId, force = false) {
     if (!isContextValid()) return;
-    if (!currentConfig.autoSendLanguageNotice) return;
+    if (!force && !currentConfig.autoSendLanguageNotice) return;
     if (!matchId || matchId === "index" || matchId.length < 5) return;
-    if (sentLanguageNoticeRooms.has(matchId)) return;
+    if (!force && sentLanguageNoticeRooms.has(matchId)) return;
+
+    // NEVER auto-send into finished or live games! (Allow only when user manually clicks test: force === true)
+    if (!force && isMatchLiveOrFinished()) {
+      console.log(`[Pathfinder] Skipping auto language notice for match ${matchId}: match is already finished or live`);
+      sentLanguageNoticeRooms.add(matchId);
+      return;
+    }
 
     let attempts = 0;
     if (langNoticeRetryTimer) clearInterval(langNoticeRetryTimer);
 
     langNoticeRetryTimer = setInterval(() => {
       attempts++;
-      if (!isContextValid() || attempts > 20 || sentLanguageNoticeRooms.has(matchId)) {
+      if (!isContextValid() || (!force && sentLanguageNoticeRooms.has(matchId))) {
         clearInterval(langNoticeRetryTimer);
+        return;
+      }
+
+      if (!force && isMatchLiveOrFinished()) {
+        clearInterval(langNoticeRetryTimer);
+        sentLanguageNoticeRooms.add(matchId);
+        return;
+      }
+
+      if (attempts > 80) {
+        clearInterval(langNoticeRetryTimer);
+        if (force) {
+          makePanel({
+            title: "⚠️ チャット入力欄が見つかりません / Chat Not Found",
+            message: "チームチャット入力欄を検出できませんでした。右側のチームチャットが開いているか確認してください。",
+            sub: "Could not find Team Chat input. Please ensure Team Chat is visible and try again.",
+            buttonLabel: "OK"
+          });
+        }
         return;
       }
 
@@ -1541,56 +1893,88 @@
         return;
       }
 
-      const inputEl = document.querySelector('textarea[name="message"], textarea[placeholder*="message" i], textarea[placeholder*="chat" i], input[placeholder*="message" i], div[class*="chat"] textarea, div[class*="Chat"] textarea, [data-testid*="chat-input"]');
-      if (!inputEl) return;
+      // Ensure sidebar is open, but NEVER toggle if already open
+      ensureChatSidebarOpen();
+      ensureTeamSectionExpanded();
+
+      // Locate team chat textarea using EXT proven method
+      const targetInput = findTeamChatInput();
+      if (!targetInput) return;
 
       sentLanguageNoticeRooms.add(matchId);
       clearInterval(langNoticeRetryTimer);
 
-      const msgText = currentConfig.languageNoticeText || "Hello team! I don't speak Russian, please info in English / Привет! Не говорю по-русски, давайте инфу на английском";
+      const msgText = currentConfig.languageNoticeText || "Hello team! English or Japanese please / 英語または日本語でお願いします";
+
       try {
-        const proto = inputEl instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+        targetInput.focus();
+
+        // 1. Direct React setter on prototype to update internal React state (same as EXT)
+        const proto = targetInput instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
         const descriptor = Object.getOwnPropertyDescriptor(proto, "value");
         if (descriptor && descriptor.set) {
-          descriptor.set.call(inputEl, msgText);
+          descriptor.set.call(targetInput, msgText);
         } else {
-          inputEl.value = msgText;
+          targetInput.value = msgText;
         }
-        inputEl.dispatchEvent(new Event("input", { bubbles: true }));
-        inputEl.dispatchEvent(new Event("change", { bubbles: true }));
 
-        setTimeout(() => {
-          inputEl.dispatchEvent(new KeyboardEvent("keydown", {
+        targetInput.dispatchEvent(new Event("input", { bubbles: true }));
+        targetInput.dispatchEvent(new Event("change", { bubbles: true }));
+
+        // 2. Dispatch Enter keydown + keyup after brief delay (same as EXT)
+        const triggerSend = () => {
+          const enterDown = new KeyboardEvent("keydown", {
             key: "Enter",
             code: "Enter",
             keyCode: 13,
             which: 13,
             bubbles: true,
             cancelable: true
-          }));
-          const sendBtn = inputEl.closest('form, div[class*="chat"], div[class*="Chat"]')?.querySelector('button[type="submit"], button[aria-label*="send" i], [class*="send" i]');
-          if (sendBtn) sendBtn.click();
-        }, 150);
-      } catch {}
-    }, 1000);
+          });
+          const enterUp = new KeyboardEvent("keyup", {
+            key: "Enter",
+            code: "Enter",
+            keyCode: 13,
+            which: 13,
+            bubbles: true,
+            cancelable: true
+          });
+          targetInput.dispatchEvent(enterDown);
+          targetInput.dispatchEvent(enterUp);
+
+          const form = targetInput.closest("form");
+          if (form) form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+        };
+
+        setTimeout(() => {
+          triggerSend();
+
+          // Double check if value cleared after submit; retry if needed
+          setTimeout(() => {
+            if (targetInput.value && targetInput.value.length > 0) {
+              triggerSend();
+            }
+
+            if (force) {
+              makePanel({
+                title: "💬 言語通知テスト成功 / Sent Successfully",
+                message: "チームチャットへ「ロシア語不可」メッセージを自動送信しました！",
+                sub: "Language notice has been successfully dispatched to Team Chat.",
+                buttonLabel: "OK"
+              });
+            }
+          }, 250);
+        }, 100);
+      } catch (err) {
+        console.warn("[Pathfinder] Auto language notice dispatch error:", err);
+      }
+    }, 400);
   }
 
   // Live Room Chat Relay into Discord Webhook
   const relayedMessageSignatures = new Set();
   let chatObserver = null;
   let activeChatRelayMatchId = null;
-  let latestMatchRoomState = null;
-
-  function isMatchInLiveGame(matchData) {
-    const state = String(matchData?.state || matchData?.status || latestMatchRoomState || "").toUpperCase();
-    if (state === "ONGOING" || state === "FINISHED" || state === "CLOSED") {
-      return true;
-    }
-    // Also detect live in-game match / knife round indicators in DOM
-    const liveEl = document.querySelector('[class*="LiveIndicator"], [class*="Scoreboard"], [class*="MatchScore"], [class*="live-indicator"], [data-testid*="scoreboard"], span[class*="LiveBadge"]');
-    if (liveEl) return true;
-    return false;
-  }
 
   function stopChatRelay(reason) {
     if (chatObserver) {
@@ -1599,6 +1983,27 @@
     }
     if (activeChatRelayMatchId) {
       console.log(`[Pathfinder] Room chat relay stopped for match ${activeChatRelayMatchId}: ${reason || "knife round/match started"}`);
+    }
+  }
+
+  function extractMessageText(node) {
+    try {
+      const clone = node.cloneNode(true);
+      // Remove author, nickname, timestamp, reactions, actions, avatar, svg, and img elements
+      clone.querySelectorAll('[class*="nickName" i], [class*="nickname" i], [class*="author" i], [class*="sender" i], [class*="time" i], [class*="timestamp" i], [class*="messageActions" i], [class*="reaction" i], [data-message-actions="true"], time, img, svg, [class*="avatar" i]').forEach(el => el.remove());
+      
+      // Look for paragraph or content text (FACEIT uses span.RrW8Nq_messageText > div.paragraph)
+      const contentEl = clone.querySelector('span[class*="messageText" i], div[class*="paragraph" i], [class*="contentStack" i], p, [class*="message-body" i], [class*="text-message" i], [class*="content" i]');
+      let text = contentEl ? contentEl.textContent.trim() : clone.textContent.trim();
+      text = text.replace(/^[\s\u200B-\u200D\uFEFF]+|[\s\u200B-\u200D\uFEFF]+$/g, "");
+      
+      // Strictly reject if text is only a timestamp (e.g. "23:03" or "11:05 PM")
+      if (/^\d{1,2}:\d{2}(?::\d{2})?(?:\s*[ap]m)?$/i.test(text)) {
+        return "";
+      }
+      return text;
+    } catch {
+      return "";
     }
   }
 
@@ -1639,17 +2044,34 @@
       const { id: myId, nick: myNick } = getCurrentUserInfo();
       const myLowerNick = (myNick || "").toLowerCase();
 
-      const msgNodes = document.querySelectorAll('div[class*="message-item"], div[class*="Message__Container"], div[class*="ChatMessage"], div[class*="MessageRow"], li[class*="message"], div[class*="Message_"]');
+      const msgNodes = document.querySelectorAll(
+        'div[class*="messageItem" i], div[class*="message-item" i], div[class*="MessagePreContainer" i], div[class*="Message__Container" i], div[class*="ChatMessage" i], div[class*="MessageRow" i], li[class*="message" i]'
+      );
       if (!msgNodes || msgNodes.length === 0) return;
 
       for (const node of msgNodes) {
-        const senderEl = node.querySelector('[class*="nickname"], [class*="author"], [class*="sender"], a[class*="name"], span[class*="Sender"]');
-        const textEl = node.querySelector('[class*="text"], [class*="content"], [class*="body"], p, span[class*="message"]');
-        if (!senderEl || !textEl) continue;
+        // 1. Check if node is user's own message
+        const isSelfNode = node.matches('[class*="self" i], [class*="own" i], [class*="outgoing" i], [class*="is-me" i], [data-is-me="true"]') ||
+                           !!node.querySelector('[class*="self" i], [class*="own" i], [class*="outgoing" i], [class*="is-me" i]');
+        if (isSelfNode) continue;
 
-        const sender = senderEl.textContent.trim();
-        const text = textEl.textContent.trim();
-        if (!sender || !text) continue;
+        const senderEl = node.querySelector(
+          'a[class*="nickName" i], [class*="nickName" i], [class*="nickname" i], [class*="author" i], [class*="sender" i], a[class*="name" i], span[class*="Sender" i]'
+        );
+        if (!senderEl) continue;
+
+        let sender = senderEl.textContent.trim();
+        // Remove any trailing time from sender (e.g. "n4n4 23:03" -> "n4n4")
+        sender = sender.replace(/\s*\d{1,2}:\d{2}.*$/, "").trim();
+        if (!sender) continue;
+
+        // Filter out own messages by nickname
+        if (myLowerNick && sender.toLowerCase() === myLowerNick) continue;
+        if (cachedMyNick && sender.toLowerCase() === cachedMyNick.toLowerCase()) continue;
+
+        // Extract real message text (excludes timestamp)
+        const text = extractMessageText(node);
+        if (!text) continue;
 
         const sig = `${matchId}:${sender}:${text}`;
         if (relayedMessageSignatures.has(sig)) continue;
@@ -1657,9 +2079,6 @@
 
         // On initial scan when opening room, only record existing messages to prevent old history replay
         if (isInitial) continue;
-
-        // Filter out own messages so no echo!
-        if (myLowerNick && sender.toLowerCase() === myLowerNick) continue;
 
         // Relay teammate message to Discord webhook
         safeSendMessage({
@@ -1686,25 +2105,282 @@
     } catch {}
   }
 
+  // --- Discord Inbound Bridge (Discord ➔ FACEIT Team Chat) ---
+  let inboundBridgeTimer = null;
+  let lastHandledDiscordMsgId = null;
+  let activeInboundMatchId = null;
+  let isCheckingDiscordInbound = false;
+
+  function sanitizeDiscordInboundMessage(text) {
+    if (!text) return "";
+    // 1. Remove Discord custom emojis <:name:id> or <a:name:id>
+    let clean = text.replace(/<a?:[a-zA-Z0-9_~]+:\d+>/g, "");
+    // 2. Remove standard Unicode emojis and pictographs
+    clean = clean.replace(/[\u{1F300}-\u{1F9FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1FA00}-\u{1FAFF}\u{FE00}-\u{FE0F}\u{1F1E6}-\u{1F1FF}]/gu, "");
+    // 3. Normalize horizontal whitespace per line (keep \n)
+    clean = clean.replace(/[^\S\r\n]+/g, " ");
+    // 4. Collapse 3+ newlines into single newline
+    clean = clean.replace(/(\r?\n){2,}/g, "\n");
+    return clean.trim();
+  }
+
+  function splitIntoChatChunks(text, maxLen = 180) {
+    if (!text) return [];
+    // If entire message fits within maxLen, keep all newlines intact in a single message!
+    if (text.length <= maxLen) {
+      return [text];
+    }
+
+    // Only split if exceeding maxLen
+    const chunks = [];
+    let remaining = text;
+
+    while (remaining.length > 0) {
+      if (remaining.length <= maxLen) {
+        chunks.push(remaining);
+        break;
+      }
+
+      // Try to break at a newline first within maxLen
+      let breakIdx = remaining.lastIndexOf("\n", maxLen);
+      if (breakIdx <= 0) {
+        // Fallback: try to break at space
+        breakIdx = remaining.lastIndexOf(" ", maxLen);
+      }
+      if (breakIdx <= 0) {
+        // Hard cut if no newline or space found
+        breakIdx = maxLen;
+      }
+
+      chunks.push(remaining.slice(0, breakIdx).trim());
+      remaining = remaining.slice(breakIdx).trim();
+    }
+
+    return chunks.filter(Boolean);
+  }
+
+  async function sendTextToTeamChat(msgText) {
+    let targetInput = findTeamChatInput();
+    if (!targetInput) {
+      console.log("[Pathfinder Discord Bridge] Team chat input not found, opening sidebar and expanding Team Chat...");
+      ensureChatSidebarOpen();
+      await new Promise(r => setTimeout(r, 200));
+      ensureTeamSectionExpanded();
+      await new Promise(r => setTimeout(r, 200));
+
+      // Retry up to 5 times (total ~1.5s) to allow React to mount the textarea
+      for (let attempt = 1; attempt <= 5; attempt++) {
+        targetInput = findTeamChatInput();
+        if (targetInput) break;
+        ensureTeamSectionExpanded();
+        await new Promise(r => setTimeout(r, 250));
+      }
+    }
+
+    if (!targetInput) {
+      console.warn("[Pathfinder Discord Bridge] Team chat input still not found after opening attempts!");
+      return false;
+    }
+
+    dismissEmojiPicker();
+
+    try {
+      targetInput.focus();
+
+      // Try insertText first (works best with React / draft / contenteditable)
+      let inserted = false;
+      try {
+        inserted = document.execCommand('insertText', false, msgText);
+      } catch {}
+
+      if (!inserted || targetInput.value !== msgText) {
+        const proto = targetInput instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+        const descriptor = Object.getOwnPropertyDescriptor(proto, "value");
+        if (descriptor && descriptor.set) {
+          descriptor.set.call(targetInput, msgText);
+        } else {
+          targetInput.value = msgText;
+        }
+      }
+
+      targetInput.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+      targetInput.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+
+      await new Promise(r => setTimeout(r, 100));
+
+      const enterDown = new KeyboardEvent("keydown", { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true, cancelable: true });
+      const enterUp = new KeyboardEvent("keyup", { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true, cancelable: true });
+      targetInput.dispatchEvent(enterDown);
+      targetInput.dispatchEvent(enterUp);
+
+      return true;
+    } catch (err) {
+      console.warn("[Pathfinder] Failed to send inbound Discord text to team chat:", err);
+      return false;
+    }
+  }
+
+  const inboundSendQueue = [];
+  const processedInboundMsgIds = new Set();
+  let isProcessingInboundQueue = false;
+
+  async function enqueueInboundDiscordMessage(msg) {
+    if (!msg || !msg.id) return;
+    if (processedInboundMsgIds.has(msg.id)) {
+      console.log(`[Pathfinder Discord Bridge] Duplicate message ignored: ${msg.id}`);
+      return;
+    }
+    processedInboundMsgIds.add(msg.id);
+    if (processedInboundMsgIds.size > 200) {
+      const first = processedInboundMsgIds.values().next().value;
+      processedInboundMsgIds.delete(first);
+    }
+
+    inboundSendQueue.push(msg);
+    if (isProcessingInboundQueue) return;
+    isProcessingInboundQueue = true;
+
+    while (inboundSendQueue.length > 0) {
+      const current = inboundSendQueue.shift();
+      const rawContent = current.content || "";
+      if (!rawContent) {
+        console.warn("[Pathfinder Discord Bridge] Empty message text received!");
+        continue;
+      }
+
+      const cleanText = sanitizeDiscordInboundMessage(rawContent);
+      if (!cleanText) {
+        console.log("[Pathfinder Discord Bridge] Inbound message ignored (only emojis):", rawContent);
+        continue;
+      }
+
+      const chunks = splitIntoChatChunks(cleanText, 160);
+      if (chunks.length === 0) continue;
+
+      let allChunksSent = true;
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        const finalMessage = currentConfig.discordInboundTagPrefix ? `[Discord] ${chunk}` : chunk;
+        console.log(`%c[Pathfinder Discord Bridge] Typing chunk ${i + 1}/${chunks.length} into Team Chat:`, "color: #4ade80; font-weight: bold;", finalMessage);
+        const sent = await sendTextToTeamChat(finalMessage);
+
+        if (sent) {
+          console.log(`[Pathfinder] Inbound Discord message chunk sent to Team Chat: "${finalMessage}"`);
+        } else {
+          allChunksSent = false;
+        }
+
+        // Delay between chunks to let FACEIT register each message independently
+        if (i < chunks.length - 1) {
+          await new Promise(r => setTimeout(r, 450));
+        }
+      }
+
+      if (allChunksSent) {
+        if (currentConfig.discordBotToken && current.channel_id && current.id) {
+          safeSendMessage({
+            type: "ADD_DISCORD_REACTION",
+            channelId: current.channel_id,
+            messageId: current.id,
+            botToken: currentConfig.discordBotToken
+          });
+        }
+        makePanel({
+          title: "💬 Discord ➔ Team Chat",
+          message: chunks.join("\n"),
+          sub: `From Discord (${current.author?.username || "You"})${chunks.length > 1 ? ` (${chunks.length} msgs)` : ""}`,
+          buttonLabel: "OK"
+        });
+      }
+
+      // Pause 400ms between consecutive messages to ensure FACEIT processes each without overlap
+      await new Promise(r => setTimeout(r, 400));
+    }
+
+    isProcessingInboundQueue = false;
+  }
+
+  let inboundTestModeExpiry = 0;
+  let isGatewayActive = false;
+
+  function stopDiscordInboundBridge(reason) {
+    if (Date.now() < inboundTestModeExpiry && !String(reason).includes("disabled") && !String(reason).includes("missing")) {
+      // Keep running during explicit 60s manual test even if room is finished or state changed
+      return;
+    }
+    isGatewayActive = false;
+    if (inboundBridgeTimer) {
+      clearInterval(inboundBridgeTimer);
+      inboundBridgeTimer = null;
+    }
+    safeSendMessage({ type: "STOP_DISCORD_GATEWAY" });
+    if (activeInboundMatchId) {
+      console.log(`[Pathfinder] Discord inbound bridge stopped for match ${activeInboundMatchId}: ${reason || "knife round/finished"}`);
+      activeInboundMatchId = null;
+    }
+  }
+
+  function initDiscordInboundBridge(matchId, force = false) {
+    if (!isContextValid()) return;
+    const isForce = force || (Date.now() < inboundTestModeExpiry);
+    if (!isForce && (!currentConfig.enableDiscordInbound || !currentConfig.discordBotToken || !currentConfig.discordBotChannelId)) {
+      stopDiscordInboundBridge("Discord inbound disabled in config");
+      return;
+    }
+    if (!matchId || matchId === "index" || matchId.length < 5) return;
+    if (!isForce && isMatchInLiveGame()) {
+      stopDiscordInboundBridge("Match already live or knife round");
+      return;
+    }
+    // Prevent reconnect loop if already active for this match
+    if (activeInboundMatchId === matchId && isGatewayActive) return;
+
+    activeInboundMatchId = matchId;
+    isGatewayActive = true;
+
+    const botToken = currentConfig.discordBotToken?.trim();
+    const channelId = currentConfig.discordBotChannelId?.trim();
+    const allowedAuthorId = (currentConfig.discordBotAuthorId || "").trim();
+
+    if (!botToken || !channelId) {
+      console.warn("[Pathfinder Discord Bridge] Missing botToken or channelId:", { hasToken: !!botToken, hasChannel: !!channelId });
+      stopDiscordInboundBridge("Token or Channel ID missing");
+      return;
+    }
+
+    // Connect Discord WebSocket Gateway for real-time instant push (0 HTTP requests!)
+    safeSendMessage({
+      type: "START_DISCORD_GATEWAY",
+      botToken,
+      channelId,
+      allowedAuthorId
+    });
+
+    console.log(`%c[Pathfinder Discord Bridge] GATEWAY ACTIVE for match ${matchId} in channel ${channelId}${force ? " (TEST FORCE MODE)" : ""}`, "color: #93c5fd; font-weight: bold;");
+  }
+
   let lastCheckedRoomPath = "";
   function checkMatchRoomUrl() {
     if (!isContextValid()) return;
     const currentPath = location.pathname;
 
-    const match = currentPath.match(/\/(?:cs2|csgo)?\/?room\/([a-zA-Z0-9-]+)/i);
+    const match = currentPath.match(/\/room\/([a-zA-Z0-9-]+)/i);
     if (match && match[1]) {
       const matchId = match[1];
       if (matchId !== "index" && matchId.length >= 5) {
         if (activeChatRelayMatchId && activeChatRelayMatchId !== matchId) {
           stopChatRelay("Switched match room");
+          stopDiscordInboundBridge("Switched match room");
           latestMatchRoomState = null;
         }
         trySendLanguageNotice(matchId);
         initChatRelay(matchId);
+        initDiscordInboundBridge(matchId);
       }
     } else {
-      if (chatObserver) {
+      if (chatObserver || inboundBridgeTimer) {
         stopChatRelay("Left match room");
+        stopDiscordInboundBridge("Left match room");
         latestMatchRoomState = null;
       }
     }
@@ -1719,6 +2395,542 @@
     }
   }
 
+  let lastPromptedVetoRound = null;
+  let activeSimulation = null;
+
+  function startFullVetoSimulation() {
+    const existing = document.getElementById("pathfinder-veto-test-arena");
+    if (existing) existing.remove();
+    activeSimulation = null;
+
+    const ALL_MAPS = [
+      { name: "Dust2", class_name: "de_dust2" },
+      { name: "Mirage", class_name: "de_mirage" },
+      { name: "Inferno", class_name: "de_inferno" },
+      { name: "Nuke", class_name: "de_nuke" },
+      { name: "Ancient", class_name: "de_ancient" },
+      { name: "Anubis", class_name: "de_anubis" },
+      { name: "Vertigo", class_name: "de_vertigo" },
+      { name: "Cache", class_name: "de_cache" }
+    ];
+    const totalRounds = ALL_MAPS.length - 1;
+
+    const overlay = document.createElement("div");
+    overlay.id = "pathfinder-veto-test-arena";
+    overlay.setAttribute("data-phase", "full-sim");
+    overlay.style.cssText = `
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      width: 540px;
+      max-width: 92vw;
+      background: #0d121f;
+      border: 1px solid #3b2a59;
+      border-radius: 14px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85);
+      padding: 16px 20px;
+      z-index: 2147483640;
+      color: #f8fafc;
+      font-family: "Hiragino Sans", "Yu Gothic UI", "Meiryo", Arial, sans-serif;
+    `;
+
+    overlay.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+        <div>
+          <div style="font-size: 14px; font-weight: 800; color: #c084fc; display: flex; align-items: center; gap: 6px;">
+            <span>🎮</span> FACEIT Match Veto Simulation
+          </div>
+          <div id="pathfinder-sim-status" style="font-size: 11px; color: #a78bfa; margin-top: 2px; font-weight: 700;">
+            ⚔️ [Round 1/${totalRounds}] あなたのBAN番です！Discordでマップを選択してください
+          </div>
+        </div>
+        <button id="pathfinder-close-test-arena" type="button" style="background: none; border: none; color: #94a3b8; font-size: 16px; cursor: pointer; padding: 2px 6px; line-height: 1;">✕</button>
+      </div>
+      <div id="pathfinder-arena-cards" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const closeBtn = overlay.querySelector("#pathfinder-close-test-arena");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", () => {
+        activeSimulation = null;
+        overlay.remove();
+      });
+    }
+
+    const cardsContainer = overlay.querySelector("#pathfinder-arena-cards");
+    const cardElements = new Map();
+
+    ALL_MAPS.forEach(m => {
+      const card = document.createElement("div");
+      card.className = "VoteEntity pathfinder-mock-card";
+      card.setAttribute("data-testid", `vote-entity-${m.class_name}`);
+      card.style.cssText = `
+        background: #182035;
+        border: 1px solid #2d3b5e;
+        border-radius: 8px;
+        padding: 8px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.25s ease;
+      `;
+
+      card.innerHTML = `
+        <div style="font-size: 11px; font-weight: 700; color: #f8fafc; letter-spacing: 0.5px;">${m.name.toUpperCase()}</div>
+        <button type="button" class="pathfinder-mock-ban-btn" style="
+          background: #ef4444;
+          border: none;
+          color: #ffffff;
+          padding: 4px 8px;
+          border-radius: 5px;
+          font-size: 10px;
+          font-weight: 700;
+          cursor: pointer;
+          width: 100%;
+          text-align: center;
+          transition: background 0.15s;
+        ">BAN</button>
+      `;
+
+      cardsContainer.appendChild(card);
+      cardElements.set(m.class_name, card);
+    });
+
+    activeSimulation = {
+      round: 1,
+      totalRounds,
+      remaining: [...ALL_MAPS],
+      isMyTurn: true,
+      cardElements,
+      statusEl: overlay.querySelector("#pathfinder-sim-status")
+    };
+
+    safeSendMessage({
+      type: "SEND_DISCORD_VETO_PROMPT",
+      channelId: currentConfig.discordBotChannelId,
+      botToken: currentConfig.discordBotToken,
+      matchId: "sim-match",
+      phase: "map",
+      entities: activeSimulation.remaining
+    });
+  }
+
+  function handleSimulationBan(name, className) {
+    if (!activeSimulation || !activeSimulation.isMyTurn) return false;
+
+    const raw = (className || name || "").toLowerCase();
+    const clean = raw.replace(/^de_/i, "");
+    const foundIdx = activeSimulation.remaining.findIndex(m => {
+      return m.class_name.toLowerCase().includes(clean) || m.name.toLowerCase().includes(clean);
+    });
+    if (foundIdx === -1) return false;
+
+    const bannedMap = activeSimulation.remaining[foundIdx];
+    activeSimulation.remaining.splice(foundIdx, 1);
+    activeSimulation.isMyTurn = false;
+
+    const card = activeSimulation.cardElements.get(bannedMap.class_name);
+    if (card) {
+      card.style.background = "#2b1115";
+      card.style.borderColor = "#ef4444";
+      card.style.opacity = "0.45";
+      const btn = card.querySelector("button");
+      if (btn) {
+        btn.textContent = "BAN (YOU) 🚫";
+        btn.disabled = true;
+        btn.style.background = "#450a0a";
+        btn.style.cursor = "not-allowed";
+      }
+    }
+
+    makePanel({
+      title: "🚫 FACEIT Veto (Discord Remote)",
+      message: `${bannedMap.name.toUpperCase()} をBANしました！ / Banned!`,
+      sub: "RePeek DOM click 成功 (シミュレーション)",
+      buttonLabel: "OK"
+    });
+
+    if (activeSimulation.remaining.length <= 1) {
+      finishSimulation();
+      return true;
+    }
+
+    activeSimulation.round++;
+    if (activeSimulation.statusEl) {
+      activeSimulation.statusEl.textContent = `⏳ [Round ${activeSimulation.round}/${activeSimulation.totalRounds}] 相手チームがBAN中... / Opponent is thinking...`;
+      activeSimulation.statusEl.style.color = "#f59e0b";
+    }
+
+    setTimeout(() => {
+      if (!activeSimulation || activeSimulation.remaining.length <= 1) return;
+
+      const oppIdx = Math.floor(Math.random() * activeSimulation.remaining.length);
+      const oppBanned = activeSimulation.remaining[oppIdx];
+      activeSimulation.remaining.splice(oppIdx, 1);
+
+      const oppCard = activeSimulation.cardElements.get(oppBanned.class_name);
+      if (oppCard) {
+        oppCard.style.background = "#241829";
+        oppCard.style.borderColor = "#a855f7";
+        oppCard.style.opacity = "0.45";
+        const btn = oppCard.querySelector("button");
+        if (btn) {
+          btn.textContent = "BAN (ENEMY) 🚫";
+          btn.disabled = true;
+          btn.style.background = "#3b1740";
+          btn.style.cursor = "not-allowed";
+        }
+      }
+
+      if (activeSimulation.remaining.length <= 1) {
+        finishSimulation();
+        return;
+      }
+
+      activeSimulation.round++;
+      activeSimulation.isMyTurn = true;
+      if (activeSimulation.statusEl) {
+        activeSimulation.statusEl.textContent = `⚔️ [Round ${activeSimulation.round}/${activeSimulation.totalRounds}] あなたのBAN番です！残り${activeSimulation.remaining.length}マップ`;
+        activeSimulation.statusEl.style.color = "#a78bfa";
+      }
+
+      safeSendMessage({
+        type: "SEND_DISCORD_VETO_PROMPT",
+        channelId: currentConfig.discordBotChannelId,
+        botToken: currentConfig.discordBotToken,
+        matchId: "sim-match",
+        phase: "map",
+        entities: activeSimulation.remaining
+      });
+    }, 2500);
+
+    return true;
+  }
+
+  function finishSimulation() {
+    if (!activeSimulation) return;
+    const decided = activeSimulation.remaining[0];
+    if (decided) {
+      const winCard = activeSimulation.cardElements.get(decided.class_name);
+      if (winCard) {
+        winCard.style.background = "linear-gradient(135deg, #1e293b, #0f3d64)";
+        winCard.style.borderColor = "#38bdf8";
+        winCard.style.boxShadow = "0 0 20px rgba(56, 189, 248, 0.6)";
+        winCard.style.opacity = "1";
+        const btn = winCard.querySelector("button");
+        if (btn) {
+          btn.textContent = "🏆 DECIDED";
+          btn.disabled = true;
+          btn.style.background = "#0284c7";
+          btn.style.cursor = "default";
+        }
+      }
+      if (activeSimulation.statusEl) {
+        activeSimulation.statusEl.textContent = `🏆 決定マップ: ${decided.name.toUpperCase()} (シミュレーション完了)`;
+        activeSimulation.statusEl.style.color = "#38bdf8";
+      }
+
+      makePanel({
+        title: "🏆 FACEIT Veto 完了 / Simulation Finished",
+        message: `決定マップ: ${decided.name.toUpperCase()}`,
+        sub: "全ラウンドのDiscordリモートVetoが正常に完了しました！",
+        buttonLabel: "OK"
+      });
+
+      safeSendMessage({
+        type: "SEND_DISCORD_BOT_MESSAGE",
+        channelId: currentConfig.discordBotChannelId,
+        botToken: currentConfig.discordBotToken,
+        content: `🏆 **[FACEIT Veto 完了 / Simulation Finished]**\n決定マップ / Decided Map: **${decided.name.toUpperCase()}**\n*全ラウンドのDiscordリモート操作テストが成功しました！*`
+      });
+    }
+  }
+
+  function spawnVetoTestArena(phase = "map") {
+    const existing = document.getElementById("pathfinder-veto-test-arena");
+    if (existing) {
+      if (existing.getAttribute("data-phase") !== phase) {
+        existing.remove();
+      } else {
+        return;
+      }
+    }
+
+    const isLocation = phase === "location";
+    const overlay = document.createElement("div");
+    overlay.id = "pathfinder-veto-test-arena";
+    overlay.setAttribute("data-phase", phase);
+    overlay.style.cssText = `
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      width: 480px;
+      max-width: 90vw;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 14px;
+      box-shadow: 0 20px 45px rgba(0, 0, 0, 0.75);
+      padding: 16px 18px;
+      z-index: 2147483640;
+      color: #f8fafc;
+      font-family: "Hiragino Sans", "Yu Gothic UI", "Meiryo", Arial, sans-serif;
+    `;
+
+    overlay.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+        <div>
+          <div style="font-size: 13px; font-weight: 800; color: ${isLocation ? "#38bdf8" : "#ff5500"}; display: flex; align-items: center; gap: 6px;">
+            <span>${isLocation ? "🌐" : "🎯"}</span> FACEIT ${isLocation ? "Server" : "Map"} Veto Live Test Arena
+          </div>
+          <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">
+            DiscordのBANボタンを押すと、この画面上のカードがDOMイベントで実際にBANされます
+          </div>
+        </div>
+        <button id="pathfinder-close-test-arena" type="button" style="background: none; border: none; color: #94a3b8; font-size: 16px; cursor: pointer; padding: 2px 6px; line-height: 1;">✕</button>
+      </div>
+      <div id="pathfinder-arena-cards" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const closeBtn = overlay.querySelector("#pathfinder-close-test-arena");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", () => overlay.remove());
+    }
+
+    const cardsContainer = overlay.querySelector("#pathfinder-arena-cards");
+    const testEntities = isLocation ? [
+      { name: "Germany", class_name: "germany" },
+      { name: "Finland", class_name: "finland" },
+      { name: "Sweden", class_name: "sweden" },
+      { name: "Singapore", class_name: "singapore" }
+    ] : [
+      { name: "Dust2", class_name: "de_dust2" },
+      { name: "Mirage", class_name: "de_mirage" },
+      { name: "Cache", class_name: "de_cache" },
+      { name: "Nuke", class_name: "de_nuke" }
+    ];
+
+    testEntities.forEach(m => {
+      const card = document.createElement("div");
+      card.className = "VoteEntity pathfinder-mock-card";
+      card.setAttribute("data-testid", `vote-entity-${m.class_name}`);
+      card.style.cssText = `
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 10px 12px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.2s ease;
+      `;
+
+      card.innerHTML = `
+        <div style="font-size: 13px; font-weight: 700; color: #f8fafc; letter-spacing: 0.5px;">${m.name.toUpperCase()}</div>
+        <button type="button" class="pathfinder-mock-ban-btn" style="
+          background: #ef4444;
+          border: none;
+          color: #ffffff;
+          padding: 6px 14px;
+          border-radius: 6px;
+          font-size: 11px;
+          font-weight: 700;
+          cursor: pointer;
+          width: 100%;
+          text-align: center;
+          transition: background 0.15s;
+        ">BAN</button>
+      `;
+
+      const btn = card.querySelector("button");
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        card.style.background = "#2b1115";
+        card.style.borderColor = "#7f1d1d";
+        card.style.opacity = "0.45";
+        btn.textContent = "BANNED 🚫";
+        btn.disabled = true;
+        btn.style.background = "#450a0a";
+        btn.style.cursor = "not-allowed";
+        console.log(`%c[Pathfinder Veto Test] Mock card ${m.name} clicked & banned via DOM!`, "color: #4ade80; font-weight: bold;");
+      });
+
+      cardsContainer.appendChild(card);
+    });
+
+    setTimeout(() => {
+      if (overlay.isConnected) {
+        overlay.style.transition = "opacity 0.5s ease";
+        overlay.style.opacity = "0";
+        setTimeout(() => overlay.remove(), 500);
+      }
+    }, 60000);
+  }
+
+  function executeVetoBanInDom(entityName, entityClassName, phase) {
+    const rawTarget = (entityName || entityClassName || "").trim();
+    if (!rawTarget) return false;
+
+    const cleanName = rawTarget.replace(/^de_/i, "").toLowerCase();
+    const cleanClass = (entityClassName || "").replace(/^de_/i, "").toLowerCase();
+
+    console.log(`[Pathfinder Veto] Searching DOM to ban: cleanName="${cleanName}", cleanClass="${cleanClass}"`);
+
+    function triggerRealisticClick(el) {
+      if (!el) return;
+      el.focus?.();
+      el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
+      el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
+      el.click();
+    }
+
+    function findAndClickCard() {
+      // 1. Look for cards matching name or class_name
+      const candidates = Array.from(document.querySelectorAll(
+        '[class*="VoteEntity" i], [class*="vote-entity" i], [class*="VetoEntity" i], [class*="VoteCard" i], [data-testid*="vote" i], [data-testid*="entity" i], div[class*="Card" i]'
+      ));
+
+      for (const card of candidates) {
+        const cardText = (card.textContent || "").toLowerCase();
+        const testId = (card.getAttribute("data-testid") || "").toLowerCase();
+        const className = (card.className || "").toString().toLowerCase();
+
+        const isMatch = (cleanName && cardText.includes(cleanName)) ||
+                        (cleanClass && (testId.includes(cleanClass) || className.includes(cleanClass)));
+        if (!isMatch) continue;
+
+        // Skip already disabled/banned cards
+        if (card.matches('[disabled], [class*="disabled" i], [class*="banned" i], [class*="dropped" i], [aria-disabled="true"]')) {
+          continue;
+        }
+
+        // Check if there is an explicit Ban button inside the card
+        const banBtn = card.querySelector('button, [role="button"], [class*="Button" i]');
+        if (banBtn && !banBtn.disabled) {
+          console.log(`[Pathfinder Veto] Found ban button inside card for ${rawTarget}:`, banBtn);
+          triggerRealisticClick(banBtn);
+          return true;
+        }
+
+        // Otherwise click the card itself
+        console.log(`[Pathfinder Veto] Clicking candidate card for ${rawTarget}:`, card);
+        triggerRealisticClick(card);
+        return true;
+      }
+
+      // 2. Fallback: Search all visible buttons by text
+      const allButtons = Array.from(document.querySelectorAll('button')).filter(b => {
+        return b.offsetParent !== null && !b.disabled && !isButtonExcluded(b);
+      });
+
+      for (const b of allButtons) {
+        const text = (b.textContent || "").toLowerCase();
+        if ((cleanName && text.includes(cleanName)) || (cleanClass && text.includes(cleanClass))) {
+          console.log(`[Pathfinder Veto] Clicking fallback button for ${rawTarget}:`, b);
+          triggerRealisticClick(b);
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    // Try finding card in page
+    let found = findAndClickCard();
+    if (!found && (!location.pathname.includes("/room/") || !document.getElementById("pathfinder-veto-test-arena"))) {
+      // If not in a live match, spawn the live test arena and click the mock card
+      spawnVetoTestArena(phase || "map");
+      found = findAndClickCard();
+    }
+
+    if (!found) {
+      console.log(`[Pathfinder Veto] Could not find clickable card or button for: ${rawTarget}`);
+    }
+    return found;
+  }
+
+  function checkVetoStatus(matchData) {
+    if (!isContextValid()) return;
+    if (!currentConfig.enableDiscordVeto) return;
+    if (!currentConfig.discordBotToken || !currentConfig.discordBotChannelId) return;
+
+    const voting = matchData?.voting;
+    if (!voting) return;
+
+    const state = String(matchData?.state || matchData?.status || "").toUpperCase();
+    if (state !== "VOTING" && !voting.voter) return;
+
+    const matchId = matchData?.id || matchData?.match_id;
+    if (!matchId) return;
+
+    const { id: myId, nick: myNick } = getCurrentUserInfo();
+    const f1 = matchData?.teams?.faction1;
+    const f2 = matchData?.teams?.faction2;
+    const f1Roster = f1?.roster || [];
+    const f2Roster = f2?.roster || [];
+
+    const f1HasMe = f1Roster.some(p => (myId && (p.id === myId || p.guid === myId)) || (myNick && p.nickname?.toLowerCase() === myNick.toLowerCase()));
+    const f2HasMe = f2Roster.some(p => (myId && (p.id === myId || p.guid === myId)) || (myNick && p.nickname?.toLowerCase() === myNick.toLowerCase()));
+    if (!f1HasMe && !f2HasMe) return;
+
+    const myFaction = f1HasMe ? "faction1" : "faction2";
+    const myTeam = f1HasMe ? f1 : f2;
+
+    // Check if current voter matches our team or our user ID
+    const currentVoter = voting.voter;
+    const isOurTurn = (currentVoter === myFaction || currentVoter === myId || currentVoter === myTeam?.leader);
+    if (!isOurTurn) return;
+
+    // Determine current voting phase: location or map
+    let phase = null;
+    let availableEntities = [];
+
+    // Check location phase first (if entities present and not yet picked)
+    if (voting.location && Array.isArray(voting.location.entities) && voting.location.entities.length > 1 && (!voting.location.pick || voting.location.pick.length === 0)) {
+      const dropped = new Set(voting.location.drop || []);
+      const remaining = voting.location.entities.filter(e => !dropped.has(e.class_name) && !dropped.has(e.name) && !dropped.has(e.guid));
+      if (remaining.length > 1) {
+        phase = "location";
+        availableEntities = remaining;
+      }
+    }
+
+    // Check map phase
+    if (!phase && voting.map && Array.isArray(voting.map.entities) && voting.map.entities.length > 1 && (!voting.map.pick || voting.map.pick.length === 0)) {
+      const dropped = new Set(voting.map.drop || []);
+      const remaining = voting.map.entities.filter(e => !dropped.has(e.class_name) && !dropped.has(e.name) && !dropped.has(e.guid));
+      if (remaining.length > 1) {
+        phase = "map";
+        availableEntities = remaining;
+      }
+    }
+
+    if (!phase || availableEntities.length <= 1) return;
+
+    // Unique round signature: matchId + phase + remaining entities count/names
+    const roundSig = `${matchId}:${phase}:${availableEntities.map(e => e.class_name || e.name).sort().join(",")}`;
+    if (lastPromptedVetoRound === roundSig) return;
+    lastPromptedVetoRound = roundSig;
+
+    console.log(`%c[Pathfinder Veto] It is our turn to ban ${phase}! Available:`, "color: #f43f5e; font-weight: bold;", availableEntities.map(e => e.name || e.class_name));
+
+    safeSendMessage({
+      type: "SEND_DISCORD_VETO_PROMPT",
+      matchId,
+      phase,
+      entities: availableEntities,
+      channelId: currentConfig.discordBotChannelId,
+      botToken: currentConfig.discordBotToken
+    });
+  }
+
   function handleMatchRoomDetailsEvent(e) {
     if (!e.detail) return;
     const mData = e.detail?.payload || e.detail;
@@ -1728,7 +2940,9 @@
     }
     if (isMatchInLiveGame(mData)) {
       stopChatRelay("Match state is " + state);
+      stopDiscordInboundBridge("Match state is " + state);
     }
+    checkVetoStatus(mData);
     processMatchRoom(e.detail);
     const mId = mData?.id || mData?.match_id;
     if (mId) checkServerIpNotification(mId, mData);
@@ -1737,6 +2951,20 @@
   window.addEventListener("popstate", checkMatchRoomUrl);
   window.addEventListener("pathfinder:match-room-details", handleMatchRoomDetailsEvent);
   document.addEventListener("pathfinder:match-room-details", handleMatchRoomDetailsEvent);
+
+  let lastVetoPollTime = 0;
+  function pollVetoStatusIfNeeded(matchId) {
+    if (!currentConfig.enableDiscordVeto || !currentConfig.discordBotToken || !currentConfig.discordBotChannelId) return;
+    if (Date.now() - lastVetoPollTime < 2500) return;
+    lastVetoPollTime = Date.now();
+    try {
+      chrome.runtime.sendMessage({ type: "FETCH_MATCH_DETAILS", matchId }, (res) => {
+        if (res?.ok && res?.data) {
+          checkVetoStatus(res.data);
+        }
+      });
+    } catch {}
+  }
 
   // Periodic poll to maintain queue state
   const pollInterval = setInterval(() => {
@@ -1748,14 +2976,16 @@
     checkMatchRoomUrl();
 
     // Check if live match / knife round has begun to immediately halt chat relay
-    if (chatObserver && isMatchInLiveGame()) {
+    if ((chatObserver || inboundBridgeTimer) && isMatchInLiveGame() && Date.now() >= inboundTestModeExpiry) {
       stopChatRelay("Knife round / live match detected via poll");
+      stopDiscordInboundBridge("Knife round / live match detected via poll");
     }
 
-    // Check for Server Connect IP if option is enabled (fallback via DOM or active room)
-    if (currentConfig.enableDiscordAlerts && currentConfig.discordWebhookUrl && currentConfig.discordNotifyServerIp) {
-      const roomMatch = location.pathname.match(/\/(?:cs2|csgo)?\/?room\/([a-zA-Z0-9-]+)/i);
-      if (roomMatch && roomMatch[1] && roomMatch[1] !== "index") {
+    const roomMatch = location.pathname.match(/\/(?:cs2|csgo)?\/?room\/([a-zA-Z0-9-]+)/i);
+    if (roomMatch && roomMatch[1] && roomMatch[1] !== "index") {
+      pollVetoStatusIfNeeded(roomMatch[1]);
+      // Check for Server Connect IP if option is enabled (fallback via DOM or active room)
+      if (currentConfig.enableDiscordAlerts && currentConfig.discordWebhookUrl && currentConfig.discordNotifyServerIp) {
         checkServerIpNotification(roomMatch[1], null);
       }
     }

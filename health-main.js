@@ -96,7 +96,21 @@
 
   function syncUserInfo() {
     try {
-      for (const k of ["user", "auth", "faceit_user", "SP_USER"]) {
+      // 1. Redux Persist (modern FACEIT storage)
+      const persist = window.localStorage.getItem("persist:root");
+      if (persist) {
+        const root = JSON.parse(persist);
+        if (root.auth) {
+          const auth = JSON.parse(root.auth);
+          const u = auth?.user;
+          const nick = u?.nickname || u?.name;
+          const uid = u?.id || u?.guid;
+          if (nick && document.documentElement) document.documentElement.dataset.pathfinderUserNick = nick;
+          if (uid && document.documentElement) document.documentElement.dataset.pathfinderUserId = uid;
+        }
+      }
+
+      for (const k of ["user", "auth", "faceit_user", "SP_USER", "FACEIT_AUTH_USER"]) {
         const raw = window.localStorage.getItem(k);
         if (raw) {
           const p = JSON.parse(raw);
@@ -163,6 +177,18 @@
             document.documentElement.dataset.pathfinderUserId = userM[1];
           }
         }
+        if (url.pathname.includes("/users/v1/users/me") || url.pathname.includes("/auth/v1/resources/user") || url.pathname.includes("/users/v1/nicknames/")) {
+          result.then((response) => {
+            if (!response.ok) return;
+            response.clone().json().then((json) => {
+              const u = json?.payload?.user || json?.payload;
+              const nick = u?.nickname || u?.name;
+              const uid = u?.id || u?.guid;
+              if (nick && document.documentElement) document.documentElement.dataset.pathfinderUserNick = nick;
+              if (uid && document.documentElement) document.documentElement.dataset.pathfinderUserId = uid;
+            }).catch(() => { });
+          }).catch(() => { });
+        }
         if (url.pathname.includes(API_PATH) && url.pathname.endsWith("/matchmakings")) {
           result.then((response) => {
             if (!response.ok) return;
@@ -207,6 +233,18 @@
           if (userM && userM[1] && document.documentElement) {
             document.documentElement.dataset.pathfinderUserId = userM[1];
           }
+        }
+        if (url.pathname.includes("/users/v1/users/me") || url.pathname.includes("/auth/v1/resources/user") || url.pathname.includes("/users/v1/nicknames/")) {
+          result.then((response) => {
+            if (!response.ok) return;
+            response.clone().json().then((json) => {
+              const u = json?.payload?.user || json?.payload;
+              const nick = u?.nickname || u?.name;
+              const uid = u?.id || u?.guid;
+              if (nick && document.documentElement) document.documentElement.dataset.pathfinderUserNick = nick;
+              if (uid && document.documentElement) document.documentElement.dataset.pathfinderUserId = uid;
+            }).catch(() => { });
+          }).catch(() => { });
         }
         if (url.pathname.includes(API_PATH) && url.pathname.endsWith("/matchmakings")) {
           this.addEventListener("load", () => {
