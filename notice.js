@@ -57,11 +57,11 @@
   }
 
   function safeGetVersion() {
-    if (!isContextValid()) return "1.9.1";
+    if (!isContextValid()) return "1.9.2";
     try {
-      return chrome.runtime.getManifest()?.version || "1.9.1";
+      return chrome.runtime.getManifest()?.version || "1.9.2";
     } catch {
-      return "1.9.1";
+      return "1.9.2";
     }
   }
 
@@ -875,6 +875,7 @@
         stopQueueTimer();
       } else {
         // User clicked the play button while idle -> starting queue
+        sendOptimizedPreferenceSync();
         if (currentConfig.enableAntiSnipe) {
           e.stopImmediatePropagation();
           e.preventDefault();
@@ -3084,6 +3085,59 @@
     });
     popoverObserver.observe(document.body, { childList: true, subtree: true });
   } catch { }
+
+  // User-initiated Optimized Server Location sync
+  function sendOptimizedPreferenceSync(callback) {
+    try {
+      const userInfo = getCurrentUserInfo();
+      const userId = userInfo?.id || "";
+      const entityId = "f4148ddd-bce8-41b8-9131-ee83afcdd6dd";
+      // Click cyan link if present on page
+      const elements = document.querySelectorAll("a, button, span, div");
+      for (const el of elements) {
+        if (/OPTIMIZED SERVER LOCATION/i.test(el.textContent || "") && el.children.length === 0) {
+          if (typeof el.click === "function") {
+            el.click();
+            break;
+          }
+        }
+      }
+      if (userId) {
+        fetch("/api/play-preferences/v1/preferences/entities", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "faceit-referer": "web-next"
+          },
+          body: JSON.stringify({
+            owner: { id: userId, type: "OWNER_USER" },
+            entity: { id: entityId, type: "ENTITY_MATCHMAKING" },
+            preferences: {
+              migration_version: 16,
+              exclusions: {},
+              ping_based_matchmaking_opt_in: true
+            }
+          })
+        }).then((res) => {
+          if (typeof callback === "function") callback(res.ok);
+        }).catch(() => {
+          if (typeof callback === "function") callback(false);
+        });
+        return;
+      }
+    } catch {}
+    if (typeof callback === "function") callback(false);
+  }
+
+  // Listen for popup request to force sync Optimized Location
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg?.type === "FORCE_SYNC_OPTIMIZED_LOCATION") {
+      sendOptimizedPreferenceSync((ok) => {
+        sendResponse({ ok });
+      });
+      return true;
+    }
+  });
 
   // Periodic poll to maintain queue state
   const pollInterval = setInterval(() => {

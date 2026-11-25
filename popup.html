@@ -373,7 +373,7 @@
       <img src="pathfinder-upper.png" alt="Pathfinder">
       <div class="header-text">
         <h1>PATHFINDER</h1>
-        <p>FACEIT OVERRIDE v1.9.1</p>
+        <p>FACEIT OVERRIDE v1.9.2</p>
       </div>
     </div>
     <div class="lang-switch">
@@ -468,6 +468,17 @@
           <input type="checkbox" id="spoofKazPing">
           <span class="slider"></span>
         </label>
+      </div>
+
+      <!-- FORCE OPTIMIZED SERVER LOCATION BUTTON -->
+      <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08);">
+        <button type="button" id="btnSyncOptimizedLocation" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #fff; font-size: 11px; font-weight: 700; padding: 7px 12px; border-radius: 6px; border: none; cursor: pointer; transition: all 0.2s ease;">
+          <span id="btnSyncIcon">⚡</span>
+          <span id="btnSyncText">最適サーバー自動選択に同期</span>
+        </button>
+        <div style="font-size: 9px; color: #888; margin-top: 4px; text-align: center;" id="btnSyncSub">
+          手動選択(4サーバー制限)を解除し、最小ping自動選択に設定
+        </div>
       </div>
     </div>
 

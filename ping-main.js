@@ -109,7 +109,17 @@
 
   // 1. Hook window.fetch for latency measurement
   const nativeFetch = window.fetch;
-  window.fetch = function (resource) {
+  window.fetch = function (resource, init) {
+    // Auto-enforce OPTIMIZED SERVER LOCATION (PBMM)
+    try {
+      const rawUrl = typeof resource === "string" ? resource : resource instanceof URL ? resource.href : resource?.url;
+      if (rawUrl && typeof rawUrl === "string" && rawUrl.includes("/api/play-preferences/v1/preferences/entities")) {
+        if (init && init.body && typeof init.body === "string" && init.body.includes('"ping_based_matchmaking_opt_in":false')) {
+          init.body = init.body.replace('"ping_based_matchmaking_opt_in":false', '"ping_based_matchmaking_opt_in":true');
+        }
+      }
+    } catch {}
+
     const host = pingHost(resource);
     if (!host) return nativeFetch.apply(this, arguments);
 

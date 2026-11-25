@@ -62,6 +62,10 @@
       kazakhstanSub: "カザフスタンサーバーを対象に含める",
       spoofKazTitle: "カザフスタン 30ms 固定表示",
       spoofKazSub: "表示Pingを緑色(30ms)に固定",
+      btnSyncText: "最適サーバー自動選択に同期",
+      btnSyncSub: "手動選択(4サーバー制限)を解除し、最小ping自動選択に設定",
+      btnSyncDone: "✓ 最適化完了 (Optimized Active)",
+      btnSyncFail: "⚠️ 同期失敗 (FACEITページを開いてください)",
       secPeak: "ピークタイム",
       peakPeak: "🔥 ピーク時間帯 (マッチング活発)",
       peakMod: "🟡 通常時間帯 (マッチング可能)",
@@ -215,6 +219,10 @@
       kazakhstanSub: "Include Kazakhstan in server pool",
       spoofKazTitle: "Lock Kazakhstan to 30ms",
       spoofKazSub: "Display solid green 30ms ping on FACEIT",
+      btnSyncText: "Sync to Optimized Location",
+      btnSyncSub: "Reset manual 4-server selection and lock to lowest ping",
+      btnSyncDone: "✓ Synced to Optimized Location",
+      btnSyncFail: "⚠️ Sync failed (Open FACEIT page first)",
       secPeak: "Peak Hours",
       peakPeak: "🔥 PEAK HOURS (High Population)",
       peakMod: "🟡 MODERATE (Normal Queue)",
@@ -404,6 +412,8 @@
     document.getElementById("tKazakhstanSub").textContent = t.kazakhstanSub;
     if (document.getElementById("tSpoofKazTitle")) document.getElementById("tSpoofKazTitle").textContent = t.spoofKazTitle;
     if (document.getElementById("tSpoofKazSub")) document.getElementById("tSpoofKazSub").textContent = t.spoofKazSub;
+    if (document.getElementById("btnSyncText")) document.getElementById("btnSyncText").textContent = t.btnSyncText;
+    if (document.getElementById("btnSyncSub")) document.getElementById("btnSyncSub").textContent = t.btnSyncSub;
 
     if (document.getElementById("tSecPeak")) document.getElementById("tSecPeak").textContent = t.secPeak;
     if (document.getElementById("tSecRadar")) document.getElementById("tSecRadar").textContent = t.secRadar;
@@ -1328,6 +1338,51 @@
     btnTestPing.disabled = false;
     btnTestPing.textContent = t.btnTestPing;
   });
+
+  // Force Optimized Location sync
+  const btnSyncOpt = document.getElementById("btnSyncOptimizedLocation");
+  if (btnSyncOpt) {
+    btnSyncOpt.addEventListener("click", () => {
+      const t = I18N[currentLang] || I18N.ja;
+      const textEl = document.getElementById("btnSyncText");
+      if (textEl) textEl.textContent = "⏳ ...";
+      btnSyncOpt.style.opacity = "0.7";
+      btnSyncOpt.disabled = true;
+
+      chrome.tabs.query({ url: "*://*.faceit.com/*" }, (tabs) => {
+        let sent = false;
+        if (Array.isArray(tabs) && tabs.length > 0) {
+          const targetTab = tabs.find((x) => x.active) || tabs[0];
+          chrome.tabs.sendMessage(targetTab.id, { type: "FORCE_SYNC_OPTIMIZED_LOCATION" }, (res) => {
+            btnSyncOpt.disabled = false;
+            btnSyncOpt.style.opacity = "1";
+            if (res?.ok) {
+              if (textEl) textEl.textContent = t.btnSyncDone;
+              btnSyncOpt.style.background = "linear-gradient(135deg, #16a34a 0%, #15803d 100%)";
+              setTimeout(() => {
+                applyLanguage(currentLang);
+                btnSyncOpt.style.background = "";
+              }, 2500);
+            } else {
+              if (textEl) textEl.textContent = t.btnSyncFail;
+              setTimeout(() => {
+                applyLanguage(currentLang);
+              }, 2500);
+            }
+          });
+          sent = true;
+        }
+        if (!sent) {
+          btnSyncOpt.disabled = false;
+          btnSyncOpt.style.opacity = "1";
+          if (textEl) textEl.textContent = t.btnSyncFail;
+          setTimeout(() => {
+            applyLanguage(currentLang);
+          }, 2500);
+        }
+      });
+    });
+  }
 
   // Geolocation & Fallback check
   btnCheckGeo.addEventListener("click", async () => {
