@@ -373,7 +373,7 @@
       <img src="pathfinder-upper.png" alt="Pathfinder">
       <div class="header-text">
         <h1>PATHFINDER</h1>
-        <p>FACEIT OVERRIDE v1.9.3</p>
+        <p>FACEIT OVERRIDE v1.9.5</p>
       </div>
     </div>
     <div class="lang-switch">
@@ -470,8 +470,17 @@
         </label>
       </div>
 
+      <!-- SERVER SELECTION MODE STATUS & WARNING -->
+      <div id="serverModeStatusBadge" style="margin-top: 10px; padding: 7px 10px; border-radius: 6px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: space-between; gap: 8px; transition: all 0.2s ease;">
+        <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
+          <span id="serverModeStatusIcon" style="font-size: 11px; flex-shrink: 0;">⚡</span>
+          <span id="serverModeStatusText" style="font-size: 10px; font-weight: 600; color: #d4d4d8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">最適サーバー (最小Ping自動選択)</span>
+        </div>
+        <span id="serverModeStatusTag" style="font-size: 9px; padding: 1px 5px; border-radius: 4px; background: rgba(255,255,255,0.08); color: #888; font-weight: 700; flex-shrink: 0;">AUTO</span>
+      </div>
+
       <!-- FORCE OPTIMIZED SERVER LOCATION BUTTON -->
-      <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08);">
+      <div style="margin-top: 6px;">
         <button type="button" id="btnSyncOptimizedLocation" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #fff; font-size: 11px; font-weight: 700; padding: 7px 12px; border-radius: 6px; border: none; cursor: pointer; transition: all 0.2s ease;">
           <span id="btnSyncIcon">⚡</span>
           <span id="btnSyncText">最適サーバー自動選択に同期</span>
@@ -479,6 +488,18 @@
         <div style="font-size: 9px; color: #888; margin-top: 4px; text-align: center;" id="btnSyncSub">
           手動選択(4サーバー制限)を解除し、最小ping自動選択に設定
         </div>
+      </div>
+
+      <!-- AUTO-SYNC ON QUEUE START TOGGLE -->
+      <div class="row" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06);">
+        <div class="row-label">
+          <div class="row-title" id="tAutoSyncTitle">キュー開始時に自動同期</div>
+          <div class="row-sub" id="tAutoSyncSub">FIND MATCH時に手動選択を自動解除</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="autoSyncOptimizedLocation">
+          <span class="slider"></span>
+        </label>
       </div>
     </div>
 
@@ -516,9 +537,31 @@
       </div>
     </div>
 
+    <div class="section-title" id="tSecHistory" style="display: flex; justify-content: space-between; align-items: center;">
+      <span id="tHistoryTitle">直近のマッチサーバー履歴</span>
+      <span id="btnClearHistory" style="font-size: 9px; color: #71717a; cursor: pointer; text-decoration: underline;">クリア</span>
+    </div>
+    <div class="card" id="historyCard" style="padding: 6px; max-height: 140px; overflow-y: auto;">
+      <div id="historyEmpty" style="font-size: 10px; color: #71717a; text-align: center; padding: 8px 0;">
+        マッチ履歴はありません (No match history yet)
+      </div>
+      <div id="historyList" style="display: flex; flex-direction: column; gap: 4px;"></div>
+    </div>
+
+    <div class="section-title" id="tSecTeamComms">チーム言語レーダー</div>
+    <div class="card" id="teamCommsCard" style="padding: 7px 10px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+        <div style="font-size: 10px; font-weight: 700; color: #fff;" id="commsTitle">直近のチーム推奨VC言語</div>
+        <span id="commsTag" style="font-size: 9px; font-weight: 800; padding: 1px 5px; border-radius: 4px; background: rgba(59, 130, 246, 0.15); color: #3b82f6;">COMMS</span>
+      </div>
+      <div id="commsAdvice" style="font-size: 11px; font-weight: 600; color: #4ade80; margin-bottom: 2px;">マッチ未検知 (No active match)</div>
+      <div id="commsFlags" style="font-size: 9px; color: #a1a1aa;">FACEITマッチルームに入ると自動判定されます</div>
+    </div>
+
     <div class="section-title" id="tSecLatency">遅延測定</div>
     <div class="card">
       <button type="button" class="btn" id="btnTestPing">⚡ ピング測定</button>
+      <div id="pingSummary" style="display: none; margin-top: 6px; padding: 5px 8px; border-radius: 5px; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.25); font-size: 10px; font-weight: 700; color: #4ade80; text-align: center;"></div>
       <table class="ping-table" id="pingTable">
         <tbody>
           <tr data-host="vladivostok.eu.ping.faceit.com">
@@ -547,6 +590,50 @@
           </tr>
         </tbody>
       </table>
+
+      <!-- ISP & JITTER CALIBRATION -->
+      <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06);">
+        <button type="button" id="btnIspDiagnosis" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 11px; padding: 6px 10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #e4e4e7; cursor: pointer; font-weight: 600; transition: all 0.2s ease;">
+          <span>🌐</span>
+          <span id="btnIspText">プロバイダー回線診断 & ジッター測定</span>
+        </button>
+        <div id="ispResultBox" style="display: none; margin-top: 8px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 8px 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+            <span style="font-size: 11px; font-weight: 700; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px;" id="ispNameLabel">--</span>
+            <span id="ispTierBadge" style="font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 4px; background: rgba(34, 197, 94, 0.2); color: #4ade80;">--</span>
+          </div>
+          <div style="font-size: 10px; color: #a1a1aa; margin-bottom: 6px;" id="ispLocationLabel">--</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; background: rgba(255,255,255,0.03); border-radius: 4px; padding: 5px; text-align: center; margin-bottom: 6px;">
+            <div>
+              <div style="font-size: 9px; color: #71717a;" id="tIspMinPing">最小Ping</div>
+              <div style="font-size: 11px; font-weight: 700; color: #4ade80;" id="ispValMin">-- ms</div>
+            </div>
+            <div>
+              <div style="font-size: 9px; color: #71717a;" id="tIspAvgPing">平均Ping</div>
+              <div style="font-size: 11px; font-weight: 700; color: #fff;" id="ispValAvg">-- ms</div>
+            </div>
+            <div>
+              <div style="font-size: 9px; color: #71717a;" id="tIspJitter">ジッター</div>
+              <div style="font-size: 11px; font-weight: 700; color: #38bdf8;" id="ispValJitter">±-- ms</div>
+            </div>
+          </div>
+          <div style="font-size: 10px; color: #d4d4d8; line-height: 1.35;" id="ispRecommendation">
+            --
+          </div>
+
+          <!-- SUBSEA ROUTE DETECTOR ROW -->
+          <div id="ispRouteRow" style="margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 5px;">
+              <span id="ispRouteIcon" style="font-size: 11px;">🌊</span>
+              <span id="ispRouteTitle" style="font-size: 10px; font-weight: 600; color: #e4e4e7;">海底光ケーブル判定:</span>
+            </div>
+            <span id="ispRouteBadge" style="font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: rgba(34,197,94,0.15); color: #4ade80;">--</span>
+          </div>
+          <div id="ispRouteTip" style="font-size: 9px; color: #a1a1aa; margin-top: 3px; line-height: 1.3;">
+            --
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -633,6 +720,28 @@
 
   <!-- TAB 3: PARTY SYNC -->
   <div class="tab-pane" id="tab-party">
+    <!-- PARTY LEADER GUARD SECTION -->
+    <div class="section-title" id="tSecPartyGuard">パティリーダー監視</div>
+    <div class="card">
+      <div class="row">
+        <div class="row-info">
+          <div class="row-title" id="tPartyGuardTitle">パティ検索時のリーダー警告</div>
+          <div class="row-sub" id="tPartyGuardSub">自分がリーダーでない場合、誤マッチ防止のため警告</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="enablePartyLeaderGuard" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div id="partyRoleStatusBadge" style="margin-top: 8px; padding: 6px 10px; border-radius: 5px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span id="partyRoleIcon" style="font-size: 11px;">👥</span>
+          <span id="partyRoleText" style="font-size: 10px; font-weight: 600; color: #d4d4d8;">パティ状態を確認中...</span>
+        </div>
+        <span id="partyRoleTag" style="font-size: 9px; padding: 1px 5px; border-radius: 4px; background: rgba(255,255,255,0.06); color: #888; font-weight: 700;">CHECK</span>
+      </div>
+    </div>
+
     <div class="section-title" id="tSecPartyDesc">パティ設定の共有</div>
     <div class="card">
       <div style="font-size: 11px; color: #aaa; line-height: 1.45;" id="tPartyExplainer">

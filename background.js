@@ -428,6 +428,20 @@
       });
       return true;
     }
+    if (msg?.type === "FETCH_USER_SUMMARY" && Array.isArray(msg.ids)) {
+      fetch("https://www.faceit.com/api/user-summary/v2/list", {
+        method: "POST",
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ ids: msg.ids })
+      })
+      .then((r) => r.json())
+      .then((json) => sendResponse({ ok: true, payload: json?.payload || json || {} }))
+      .catch((err) => sendResponse({ ok: false, error: String(err) }));
+      return true;
+    }
     if (msg?.type === "FETCH_DISCORD_MESSAGES") {
       const channelId = msg.channelId;
       const botToken = msg.botToken;

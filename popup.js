@@ -9,6 +9,8 @@
     spoofVvoPing: true,
     spoofNskPing: false,
     spoofKazPing: false,
+    autoSyncOptimizedLocation: true,
+    enablePartyLeaderGuard: true,
     notifyVvoSlots: true,
     enableQueueTimer: true,
     enableQueueBeep: true,
@@ -66,6 +68,11 @@
       btnSyncSub: "手動選択(4サーバー制限)を解除し、最小ping自動選択に設定",
       btnSyncDone: "✓ 最適化完了 (Optimized Active)",
       btnSyncFail: "⚠️ 同期失敗 (FACEITページを開いてください)",
+      statusModeManual: "⚠️ 手動選択中 (4サーバー制限)",
+      statusModeOptimized: "✅ 最適サーバー (PBMM有効)",
+      statusModeUnknown: "最適サーバー (最小Ping自動選択)",
+      autoSyncTitle: "キュー開始時に自動同期",
+      autoSyncSub: "FIND MATCH時に手動選択を自動解除して最適化",
       secPeak: "ピークタイム",
       peakPeak: "🔥 ピーク時間帯 (マッチング活発)",
       peakMod: "🟡 通常時間帯 (マッチング可能)",
@@ -77,6 +84,10 @@
       radarStatusLabel: "サーバー稼働動向",
       radarMonitoring: "集計中...",
       radarBadgeHot: "🔥 RE-QUEUING",
+      secHistory: "直近のマッチサーバー履歴",
+      historyEmpty: "マッチ履歴はありません",
+      historyClear: "クリア",
+      historyClearConfirm: "マッチ履歴をクリアしますか？",
       radarBadgeInGame: "🔴 IN-GAME",
       radarBadgeAvail: "🟢 AVAILABLE",
       radarBadgeIdle: "💤 IDLE",
@@ -91,6 +102,35 @@
       secLatency: "遅延測定",
       btnTestPing: "⚡ ピング測定",
       btnTesting: "⏳ 測定中...",
+      pingSummaryBest: (name, ms) => `⚡ 最低遅延: ${name} (${ms} ms) — 最適`,
+      btnIspText: "プロバイダー回線診断 & ジッター測定",
+      btnIspTesting: "⏳ 回線品質を測定中...",
+      ispMinPing: "最小Ping",
+      ispAvgPing: "平均Ping",
+      ispJitter: "ジッター",
+      ispTierS: "S-TIER",
+      ispTierA: "A-TIER",
+      ispTierB: "B-TIER",
+      ispTierC: "C-TIER",
+      ispRecS: "ウラジオストクへの接続は極めて良好です。プロ対戦に最適な回線環境です。",
+      ispRecA: "安定した接続です。ウラジオストクで快適にプレイ可能です。",
+      ispRecB: "標準的な遅延です。混雑時間帯はキュー保護の有効化を推奨します。",
+      ispRecC: "遅延またはジッターがやや高めです。有線LAN接続を推奨します。",
+      ispError: "プロバイダー情報の取得に失敗しました (Direct/通常接続で再試行してください)",
+      secTeamComms: "チーム言語レーダー",
+      commsTitle: "直近のチーム推奨VC言語",
+      commsEmpty: "マッチ未検知 (No active match)",
+      commsEmptySub: "FACEITマッチルームに入ると自動判定されます",
+      ispRouteTitle: "海底光ケーブル判定:",
+      routeSubseaDirect: "直通 (Direct RJCN/HSCS)",
+      routeSubseaDirectTip: "海底光ファイバー直通の最速ルートです。遅延なく快適にプレイできます。",
+      routeTransit: "アジア経由 (Asia Transit)",
+      routeTransitTip: "アジア中継ハブを経由しています。DNS変更（1.1.1.1）で直通化する可能性があります。",
+      routeLoop: "迂回ループ検知 (Loop Detected)",
+      routeLoopTip: "海外迂回ループが発生しています。ルーター再起動またはVPNを推奨します。",
+      subseaPill: "🌊 直通海底ケーブル",
+      transitPill: "🟡 アジア経由",
+      loopPill: "🔴 迂回ループ",
       secQueue: "キュー待機設定",
       queueTimerTitle: "画面タイマーと警告音",
       queueTimerSub: "HUDタイマー表示 & 制限直前アラート音",
@@ -108,6 +148,13 @@
       btnTestQueue: "⏱️ 画面HUDテスト",
       secUnit: "秒",
       queueNote: "💡 <strong>重要:</strong> FACEITではマッチング開始後、約60秒が経過するとウラジオストク以外の遠隔サーバー（モスクワ・EU）へ検索地域が自動拡大されます。拡大前にキューを再起動することで、ウラジオストク等の希望サーバーに固定できます。",
+      secPartyGuard: "パティリーダー監視",
+      partyGuardTitle: "パティ検索時のリーダー警告",
+      partyGuardSub: "自分がリーダーでない場合、誤マッチ防止のため警告",
+      partyStatusSolo: "ソロ (Solo) — あなたが設定を制御しています",
+      partyStatusLeader: "👑 パティリーダー — あなたの設定が適用されます",
+      partyStatusMember: "⚠️ パティメンバー — リーダーの設定を確認してください",
+      partyStatusUnknown: "パティ状態を確認中...",
       secPartyDesc: "パティ設定の共有",
       partyExplainer: "パティ全員で同じ設定コードを共有することで、キュー時間やサーバー設定の不一致による誤マッチを防止します。",
       secPartyExport: "設定コードの書き出し",
@@ -223,6 +270,11 @@
       btnSyncSub: "Reset manual 4-server selection and lock to lowest ping",
       btnSyncDone: "✓ Synced to Optimized Location",
       btnSyncFail: "⚠️ Sync failed (Open FACEIT page first)",
+      statusModeManual: "⚠️ Manual 4-Server Mode Active",
+      statusModeOptimized: "✅ Optimized Server Location Active",
+      statusModeUnknown: "Optimized Location (Lowest Ping)",
+      autoSyncTitle: "Auto-Sync on Queue Start",
+      autoSyncSub: "Auto-reset manual selection to lowest ping on queue",
       secPeak: "Peak Hours",
       peakPeak: "🔥 PEAK HOURS (High Population)",
       peakMod: "🟡 MODERATE (Normal Queue)",
@@ -234,6 +286,10 @@
       radarStatusLabel: "Server Dynamics",
       radarMonitoring: "MONITORING",
       radarBadgeHot: "🔥 RE-QUEUING",
+      secHistory: "Recent Match Server History",
+      historyEmpty: "No match history yet",
+      historyClear: "Clear",
+      historyClearConfirm: "Clear match history?",
       radarBadgeInGame: "🔴 IN-GAME",
       radarBadgeAvail: "🟢 AVAILABLE",
       radarBadgeIdle: "💤 IDLE",
@@ -248,6 +304,35 @@
       secLatency: "Latency Diagnostics",
       btnTestPing: "⚡ Test Latency",
       btnTesting: "⏳ Testing...",
+      pingSummaryBest: (name, ms) => `⚡ Lowest Ping: ${name} (${ms} ms) — Best`,
+      btnIspText: "ISP Diagnosis & Jitter Calibration",
+      btnIspTesting: "⏳ Testing Connection Quality...",
+      ispMinPing: "Min Ping",
+      ispAvgPing: "Avg Ping",
+      ispJitter: "Jitter",
+      ispTierS: "S-TIER",
+      ispTierA: "A-TIER",
+      ispTierB: "B-TIER",
+      ispTierC: "C-TIER",
+      ispRecS: "Ultra-low latency to Vladivostok. Ideal routing for competitive FACEIT.",
+      ispRecA: "Stable connection. Excellent routing to Vladivostok.",
+      ispRecB: "Moderate latency. Queue Guard recommended during peak hours.",
+      ispRecC: "Higher latency/jitter detected. Wired LAN connection recommended.",
+      ispError: "Failed to detect ISP details (Retry with Direct connection)",
+      secTeamComms: "Team Comms Advisor",
+      commsTitle: "Latest Team Recommended Voice Comms",
+      commsEmpty: "No active match detected",
+      commsEmptySub: "Automatically calculated upon entering FACEIT match room",
+      ispRouteTitle: "Subsea Route Status:",
+      routeSubseaDirect: "Direct Subsea (RJCN/HSCS)",
+      routeSubseaDirectTip: "Optimal subsea fiber route. Minimal latency and zero transit detour.",
+      routeTransit: "Asia Transit Detour",
+      routeTransitTip: "Routing via Asian transit hubs. Changing DNS to 1.1.1.1 may enable direct subsea.",
+      routeLoop: "Global Transit Loop Detected",
+      routeLoopTip: "Traffic is looping via Europe/US transit. Restart router or use gaming VPN.",
+      subseaPill: "🌊 Direct Subsea",
+      transitPill: "🟡 Asia Transit",
+      loopPill: "🔴 Transit Loop",
       secQueue: "Queue Guard Settings",
       queueTimerTitle: "HUD Timer & Audio Alert",
       queueTimerSub: "Visual queue timer & countdown beep",
@@ -265,6 +350,13 @@
       btnTestQueue: "⏱️ Test HUD Timer",
       secUnit: "s",
       queueNote: "💡 <strong>Note:</strong> FACEIT expands matchmaking beyond Vladivostok to Moscow/EU after ~60s if players are insufficient. Re-queuing before expansion keeps you locked to preferred nodes.",
+      secPartyGuard: "Party Leader Guard",
+      partyGuardTitle: "Party Leader Warning",
+      partyGuardSub: "Warn when queuing in party as non-leader to avoid distant servers",
+      partyStatusSolo: "Solo — You are in full control of server settings",
+      partyStatusLeader: "👑 Party Leader — Your server settings are active",
+      partyStatusMember: "⚠️ Party Member — Check that leader has Optimized Location",
+      partyStatusUnknown: "Checking party state...",
       secPartyDesc: "Party Matchmaking Sync",
       partyExplainer: "Share your configuration code with your party to ensure all members use identical queue thresholds and server whitelists.",
       secPartyExport: "Export Config Code",
@@ -359,6 +451,7 @@
   };
 
   let currentLang = "ja";
+  let lastPartyRole = "unknown";
 
   // Tab switching
   const tabButtons = document.querySelectorAll(".tab-btn");
@@ -385,6 +478,18 @@
         langBtns.forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
         applyLanguage(currentLang);
+        if (typeof checkServerSelectionMode === "function") {
+          checkServerSelectionMode();
+        }
+        if (typeof renderMatchHistory === "function") {
+          renderMatchHistory();
+        }
+        if (typeof updatePeakHours === "function") {
+          updatePeakHours();
+        }
+        if (typeof updateRadarUI === "function") {
+          updateRadarUI();
+        }
         saveSettings();
       }
     });
@@ -414,13 +519,32 @@
     if (document.getElementById("tSpoofKazSub")) document.getElementById("tSpoofKazSub").textContent = t.spoofKazSub;
     if (document.getElementById("btnSyncText")) document.getElementById("btnSyncText").textContent = t.btnSyncText;
     if (document.getElementById("btnSyncSub")) document.getElementById("btnSyncSub").textContent = t.btnSyncSub;
+    if (document.getElementById("tAutoSyncTitle")) document.getElementById("tAutoSyncTitle").textContent = t.autoSyncTitle;
+    if (document.getElementById("tAutoSyncSub")) document.getElementById("tAutoSyncSub").textContent = t.autoSyncSub;
 
     if (document.getElementById("tSecPeak")) document.getElementById("tSecPeak").textContent = t.secPeak;
     if (document.getElementById("tSecRadar")) document.getElementById("tSecRadar").textContent = t.secRadar;
     if (document.getElementById("tRadarStatusLabel")) document.getElementById("tRadarStatusLabel").textContent = t.radarStatusLabel;
+    if (document.getElementById("tHistoryTitle")) document.getElementById("tHistoryTitle").textContent = t.secHistory;
+    if (document.getElementById("btnClearHistory")) document.getElementById("btnClearHistory").textContent = t.historyClear;
+    if (document.getElementById("historyEmpty")) document.getElementById("historyEmpty").textContent = t.historyEmpty;
+    if (typeof renderMatchHistory === "function") {
+      renderMatchHistory();
+    }
+
+    if (document.getElementById("tSecTeamComms")) document.getElementById("tSecTeamComms").textContent = t.secTeamComms;
+    if (document.getElementById("commsTitle")) document.getElementById("commsTitle").textContent = t.commsTitle;
+    if (typeof renderTeamComms === "function") {
+      renderTeamComms();
+    }
 
     document.getElementById("tSecLatency").textContent = t.secLatency;
     document.getElementById("btnTestPing").textContent = t.btnTestPing;
+    if (document.getElementById("btnIspText")) document.getElementById("btnIspText").textContent = t.btnIspText;
+    if (document.getElementById("tIspMinPing")) document.getElementById("tIspMinPing").textContent = t.ispMinPing;
+    if (document.getElementById("tIspAvgPing")) document.getElementById("tIspAvgPing").textContent = t.ispAvgPing;
+    if (document.getElementById("tIspJitter")) document.getElementById("tIspJitter").textContent = t.ispJitter;
+    if (document.getElementById("ispRouteTitle")) document.getElementById("ispRouteTitle").textContent = t.ispRouteTitle;
 
     document.getElementById("tSecQueue").textContent = t.secQueue;
     document.getElementById("tQueueTimerTitle").textContent = t.queueTimerTitle;
@@ -439,6 +563,13 @@
     if (document.getElementById("btnTestQueue")) document.getElementById("btnTestQueue").textContent = t.btnTestQueue;
     document.getElementById("tSecUnit").textContent = t.secUnit;
     document.getElementById("tQueueNote").innerHTML = t.queueNote;
+
+    if (document.getElementById("tSecPartyGuard")) document.getElementById("tSecPartyGuard").textContent = t.secPartyGuard;
+    if (document.getElementById("tPartyGuardTitle")) document.getElementById("tPartyGuardTitle").textContent = t.partyGuardTitle;
+    if (document.getElementById("tPartyGuardSub")) document.getElementById("tPartyGuardSub").textContent = t.partyGuardSub;
+    if (typeof updatePartyRoleUI === "function") {
+      updatePartyRoleUI(lastPartyRole);
+    }
 
     if (document.getElementById("tSecPartyDesc")) document.getElementById("tSecPartyDesc").textContent = t.secPartyDesc;
     if (document.getElementById("tPartyExplainer")) document.getElementById("tPartyExplainer").textContent = t.partyExplainer;
@@ -512,6 +643,15 @@
     document.getElementById("tIpLabel").textContent = t.ipLabel;
     document.getElementById("tRegionLabel").textContent = t.regionLabel;
     updateWebhookBadge();
+    if (typeof updateServerModeUI === "function") {
+      updateServerModeUI(lastServerMode);
+    }
+    if (typeof updatePeakHours === "function") {
+      updatePeakHours();
+    }
+    if (typeof updateRadarUI === "function") {
+      updateRadarUI();
+    }
   }
 
   // DOM Elements - Controls
@@ -521,6 +661,8 @@
   const elSpoofKaz = document.getElementById("spoofKazPing");
   const elSpoofVvo = document.getElementById("spoofVvoPing");
   const elNotifyVvoSlots = document.getElementById("notifyVvoSlots");
+  const elAutoSync = document.getElementById("autoSyncOptimizedLocation");
+  const elPartyLeaderGuard = document.getElementById("enablePartyLeaderGuard");
   const badgeNovosibirsk = document.getElementById("badge-novosibirsk");
   const badgeKazakhstan = document.getElementById("badge-kazakhstan");
   const btnTestPing = document.getElementById("btnTestPing");
@@ -765,6 +907,8 @@
       spoofKazPing: elKazakhstan.checked && elSpoofKaz ? elSpoofKaz.checked : false,
       spoofVvoPing: elSpoofVvo ? elSpoofVvo.checked : true,
       notifyVvoSlots: elNotifyVvoSlots ? elNotifyVvoSlots.checked : true,
+      autoSyncOptimizedLocation: elAutoSync ? !!elAutoSync.checked : true,
+      enablePartyLeaderGuard: elPartyLeaderGuard ? !!elPartyLeaderGuard.checked : true,
       enableQueueTimer: elQueueTimer.checked,
       enableQueueBeep: elQueueTimer.checked,
       autoCancelQueue: elAutoCancel.checked,
@@ -907,16 +1051,148 @@
     });
   }
 
+  // Match Server History UI
+  function renderMatchHistory() {
+    const t = I18N[currentLang] || I18N.ja;
+    const container = document.getElementById("historyList");
+    const emptyEl = document.getElementById("historyEmpty");
+    if (!container || !emptyEl) return;
+
+    chrome.storage.local.get(["pathfinder_match_history"], (res) => {
+      const list = Array.isArray(res?.pathfinder_match_history) ? res.pathfinder_match_history : [];
+      if (list.length === 0) {
+        emptyEl.style.display = "block";
+        container.innerHTML = "";
+        return;
+      }
+      emptyEl.style.display = "none";
+      container.innerHTML = "";
+
+      const now = Date.now();
+      list.forEach((item) => {
+        const isOk = item.isAllowed !== undefined ? item.isAllowed : item.isVlad;
+        const row = document.createElement("div");
+        row.style.cssText = `
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid ${isOk ? "rgba(34, 197, 94, 0.25)" : "rgba(239, 68, 68, 0.35)"};
+          border-left: 3px solid ${isOk ? "#22c55e" : "#ef4444"};
+          border-radius: 4px;
+          padding: 5px 8px;
+          margin-bottom: 2px;
+        `;
+
+        const diffMin = Math.max(1, Math.round((now - (item.timestamp || now)) / 60000));
+        let timeText = `${diffMin}m ago`;
+        if (diffMin < 60) {
+          timeText = currentLang === "ja" ? `${diffMin}分前` : `${diffMin}m ago`;
+        } else if (diffMin < 1440) {
+          const h = Math.floor(diffMin / 60);
+          timeText = currentLang === "ja" ? `${h}時間前` : `${h}h ago`;
+        } else {
+          const d = Math.floor(diffMin / 1440);
+          timeText = currentLang === "ja" ? `${d}日前` : `${d}d ago`;
+        }
+
+        const left = document.createElement("div");
+        left.style.cssText = "display: flex; align-items: center; gap: 6px; min-width: 0;";
+        const icon = isOk ? "🟢" : "⚠️";
+        const displayName = item.server || item.code || "Vladivostok";
+        left.innerHTML = `
+          <span style="font-size: 11px; flex-shrink: 0;">${icon}</span>
+          <span style="font-size: 11px; font-weight: 700; color: ${isOk ? "#4ade80" : "#fca5a5"}; white-space: nowrap;">${displayName}</span>
+          <span style="font-size: 10px; color: #a1a1aa; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">(${item.map || "CS2"})</span>
+        `;
+
+        const right = document.createElement("div");
+        right.style.cssText = "display: flex; align-items: center; gap: 6px; flex-shrink: 0;";
+        right.innerHTML = `
+          <span style="font-size: 10px; color: #a1a1aa;">${timeText}</span>
+          <a href="https://www.faceit.com/${currentLang === "ja" ? "ja" : "en"}/cs2/room/${encodeURIComponent(item.id)}" target="_blank" rel="noopener noreferrer" style="color: #60a5fa; text-decoration: none; font-size: 11px; font-weight: 700; padding: 1px 4px; background: rgba(255,255,255,0.06); border-radius: 3px;" title="Room">↗</a>
+        `;
+
+        row.appendChild(left);
+        row.appendChild(right);
+        container.appendChild(row);
+      });
+    });
+  }
+
+  const btnClearHist = document.getElementById("btnClearHistory");
+  if (btnClearHist) {
+    btnClearHist.addEventListener("click", () => {
+      const t = I18N[currentLang] || I18N.ja;
+      if (confirm(t.historyClearConfirm)) {
+        chrome.storage.local.remove(["pathfinder_match_history"], () => {
+          renderMatchHistory();
+        });
+      }
+    });
+  }
+
+  let lastTeamCommsData = null;
+  function renderTeamComms(comms) {
+    if (comms) lastTeamCommsData = comms;
+    const adviceEl = document.getElementById("commsAdvice");
+    const flagsEl = document.getElementById("commsFlags");
+    const tagEl = document.getElementById("commsTag");
+    if (!adviceEl || !flagsEl) return;
+    const t = I18N[currentLang] || I18N.ja;
+    const data = comms || lastTeamCommsData;
+    if (!data || !data.flagSummary) {
+      adviceEl.textContent = t.commsEmpty;
+      flagsEl.textContent = t.commsEmptySub;
+      if (tagEl) {
+        tagEl.textContent = "COMMS";
+        tagEl.style.color = "#888";
+        tagEl.style.background = "rgba(255,255,255,0.06)";
+      }
+      return;
+    }
+    adviceEl.textContent = currentLang === "ja" ? (data.recommendationJa || data.recommendation) : (data.recommendationEn || data.recommendation);
+    flagsEl.textContent = data.flagSummary;
+    if (tagEl) {
+      tagEl.textContent = data.tag || "COMMS";
+      tagEl.style.color = data.badgeColor || "#3b82f6";
+      tagEl.style.background = `${data.badgeColor}22` || "rgba(59, 130, 246, 0.15)";
+    }
+  }
+
   // Load initial settings
-  chrome.storage.local.get([STORAGE_KEY], (res) => {
+  chrome.storage.local.get([STORAGE_KEY, "lastTeamComms"], (res) => {
     const config = { ...DEFAULT_CONFIG, ...(res?.[STORAGE_KEY] || {}) };
     currentLang = config.lang || "ja";
+    if (res?.lastTeamComms) {
+      if (!res.lastTeamComms.flagSummary || !res.lastTeamComms.flagSummary.includes("OTHER (5)")) {
+        renderTeamComms(res.lastTeamComms);
+      }
+    }
+
+    try {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs && tabs[0]?.id && tabs[0]?.url && tabs[0].url.includes("faceit.com")) {
+          chrome.tabs.sendMessage(tabs[0].id, { type: "GET_CURRENT_ROOM_COMMS" }, (msgRes) => {
+            if (msgRes?.ok && msgRes?.comms) {
+              renderTeamComms(msgRes.comms);
+            }
+          });
+        }
+      });
+    } catch {}
 
     // Set active lang button
     langBtns.forEach((b) => {
       b.classList.toggle("active", b.getAttribute("data-lang") === currentLang);
     });
     applyLanguage(currentLang);
+    if (typeof checkServerSelectionMode === "function") {
+      checkServerSelectionMode();
+    }
+    if (typeof renderMatchHistory === "function") {
+      renderMatchHistory();
+    }
 
     elNovosibirsk.checked = !!config.allowNovosibirsk;
     if (elSpoofNsk) elSpoofNsk.checked = elNovosibirsk.checked && !!config.spoofNskPing;
@@ -924,6 +1200,8 @@
     if (elSpoofKaz) elSpoofKaz.checked = elKazakhstan.checked && !!config.spoofKazPing;
     if (elSpoofVvo) elSpoofVvo.checked = config.spoofVvoPing !== false;
     if (elNotifyVvoSlots) elNotifyVvoSlots.checked = config.notifyVvoSlots !== false;
+    if (elAutoSync) elAutoSync.checked = config.autoSyncOptimizedLocation !== false;
+    if (elPartyLeaderGuard) elPartyLeaderGuard.checked = config.enablePartyLeaderGuard !== false;
     elQueueTimer.checked = !!config.enableQueueTimer;
     elAutoCancel.checked = !!config.autoCancelQueue;
     if (elAutoRestart) elAutoRestart.checked = elAutoCancel.checked && !!config.autoRestartQueue;
@@ -971,6 +1249,8 @@
   [
     elSpoofVvo,
     elNotifyVvoSlots,
+    elAutoSync,
+    elPartyLeaderGuard,
     elQueueTimer,
     elAutoCancelSeconds,
     elAntiSnipe,
@@ -1295,23 +1575,40 @@
     });
   }
 
-  // Latency test
+  // Latency test (Parallel fast diagnostics)
   async function testLatency(host) {
-    const start = performance.now();
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
-      await fetch(`https://${host}/?_=${Date.now()}`, {
-        method: "HEAD",
-        cache: "no-store",
-        mode: "no-cors",
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      return Math.round(performance.now() - start);
-    } catch {
-      return null;
+    let best = null;
+    for (let i = 0; i < 2; i++) {
+      const start = performance.now();
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        await fetch(`https://${host}/?_=${Date.now()}_${i}`, {
+          method: "GET",
+          cache: "no-store",
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        const rtt = Math.round(performance.now() - start);
+        if (best === null || rtt < best) best = rtt;
+      } catch {
+        try {
+          const start2 = performance.now();
+          const controller2 = new AbortController();
+          const timeoutId2 = setTimeout(() => controller2.abort(), 1500);
+          await fetch(`https://${host}/?_=${Date.now()}_${i}`, {
+            method: "HEAD",
+            cache: "no-store",
+            mode: "no-cors",
+            signal: controller2.signal
+          });
+          clearTimeout(timeoutId2);
+          const rtt2 = Math.round(performance.now() - start2);
+          if (best === null || rtt2 < best) best = rtt2;
+        } catch {}
+      }
     }
+    return best;
   }
 
   btnTestPing.addEventListener("click", async () => {
@@ -1319,25 +1616,287 @@
     btnTestPing.disabled = true;
     btnTestPing.textContent = t.btnTesting;
 
-    const rows = document.querySelectorAll("#pingTable tr[data-host]");
-    for (const row of rows) {
-      const host = row.getAttribute("data-host");
-      const valCell = row.querySelector(".ping-val");
-      valCell.textContent = "...";
+    const summaryEl = document.getElementById("pingSummary");
+    if (summaryEl) summaryEl.style.display = "none";
 
-      const ms = await testLatency(host);
-      if (ms === null) {
-        valCell.textContent = "Timeout";
-        valCell.style.color = "#888";
-      } else {
-        valCell.textContent = `${ms} ms`;
-        valCell.style.color = ms < 60 ? "#4ade80" : ms < 120 ? "#facc15" : "#fff";
+    const rows = document.querySelectorAll("#pingTable tr[data-host]");
+    rows.forEach((row) => {
+      const valCell = row.querySelector(".ping-val");
+      if (valCell) {
+        valCell.textContent = "...";
+        valCell.style.color = "#aaa";
       }
+    });
+
+    const results = await Promise.all(
+      Array.from(rows).map(async (row) => {
+        const host = row.getAttribute("data-host");
+        const valCell = row.querySelector(".ping-val");
+        const nameEl = row.querySelector(".ping-name");
+        const rawName = nameEl ? nameEl.childNodes[0]?.textContent?.trim() || host : host;
+
+        const ms = await testLatency(host);
+        if (valCell) {
+          if (ms === null) {
+            valCell.textContent = "Timeout";
+            valCell.style.color = "#888";
+          } else {
+            valCell.textContent = `${ms} ms`;
+            valCell.style.color = ms < 60 ? "#4ade80" : ms < 100 ? "#facc15" : "#f87171";
+          }
+        }
+        return { name: rawName, host, ms };
+      })
+    );
+
+    // Find best responsive server
+    const valid = results.filter((r) => typeof r.ms === "number" && r.ms > 0);
+    if (valid.length > 0 && summaryEl) {
+      valid.sort((a, b) => a.ms - b.ms);
+      const best = valid[0];
+      const routePill = best.host.includes("vladivostok") ? ` • ${(best.ms < 48 ? t.subseaPill : best.ms <= 110 ? t.transitPill : t.loopPill)}` : "";
+      summaryEl.textContent = (typeof t.pingSummaryBest === "function" ? t.pingSummaryBest(best.name, best.ms) : `⚡ ${best.name}: ${best.ms} ms`) + routePill;
+      summaryEl.style.display = "block";
     }
 
     btnTestPing.disabled = false;
     btnTestPing.textContent = t.btnTestPing;
   });
+
+  // ISP Diagnosis & Jitter Calibration
+  const btnIsp = document.getElementById("btnIspDiagnosis");
+  if (btnIsp) {
+    btnIsp.addEventListener("click", async () => {
+      const t = I18N[currentLang] || I18N.ja;
+      const textEl = document.getElementById("btnIspText");
+      const box = document.getElementById("ispResultBox");
+      const nameEl = document.getElementById("ispNameLabel");
+      const locEl = document.getElementById("ispLocationLabel");
+      const badgeEl = document.getElementById("ispTierBadge");
+      const valMinEl = document.getElementById("ispValMin");
+      const valAvgEl = document.getElementById("ispValAvg");
+      const valJitterEl = document.getElementById("ispValJitter");
+      const recEl = document.getElementById("ispRecommendation");
+
+      btnIsp.disabled = true;
+      if (textEl) textEl.textContent = t.btnIspTesting;
+      if (box) box.style.display = "block";
+      if (nameEl) nameEl.textContent = "...";
+      if (locEl) locEl.textContent = "Vladivostok probe in progress...";
+      if (recEl) recEl.textContent = "...";
+
+      // 1. Fetch ISP info
+      let ispName = "Direct Connection";
+      let ispLoc = "Japan";
+      try {
+        const res = await fetch(`https://ipapi.co/json/?_=${Date.now()}`, { cache: "no-store" });
+        if (res.ok) {
+          const data = await res.json();
+          ispName = data.org || data.asn || "Unknown Provider";
+          const city = data.city || "";
+          const country = data.country_name || data.country_code || "";
+          ispLoc = city ? `${city}, ${country}` : country;
+        }
+      } catch {}
+
+      // 2. Run 5 ping probes to Vladivostok
+      const pings = [];
+      for (let i = 0; i < 5; i++) {
+        const start = performance.now();
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 2000);
+          await fetch(`https://vladivostok.eu.ping.faceit.com/?_=${Date.now()}_${i}`, {
+            method: "GET",
+            cache: "no-store",
+            signal: controller.signal
+          });
+          clearTimeout(timeoutId);
+          pings.push(Math.round(performance.now() - start));
+        } catch {
+          try {
+            const start2 = performance.now();
+            const controller2 = new AbortController();
+            const timeoutId2 = setTimeout(() => controller2.abort(), 1500);
+            await fetch(`https://vladivostok.eu.ping.faceit.com/`, {
+              method: "HEAD",
+              cache: "no-store",
+              mode: "no-cors",
+              signal: controller2.signal
+            });
+            clearTimeout(timeoutId2);
+            pings.push(Math.round(performance.now() - start2));
+          } catch {}
+        }
+      }
+
+      btnIsp.disabled = false;
+      if (textEl) textEl.textContent = t.btnIspText;
+
+      if (pings.length === 0) {
+        if (recEl) recEl.textContent = t.ispError;
+        return;
+      }
+
+      const minPing = Math.min(...pings);
+      const avgPing = Math.round(pings.reduce((a, b) => a + b, 0) / pings.length);
+      const jitter = Math.round((Math.max(...pings) - minPing) / 2 * 10) / 10;
+
+      if (nameEl) nameEl.textContent = ispName;
+      if (locEl) locEl.textContent = ispLoc;
+      if (valMinEl) valMinEl.textContent = `${minPing} ms`;
+      if (valAvgEl) valAvgEl.textContent = `${avgPing} ms`;
+      if (valJitterEl) valJitterEl.textContent = `±${jitter} ms`;
+
+      // Rating tiers
+      if (minPing < 35) {
+        if (badgeEl) {
+          badgeEl.textContent = t.ispTierS;
+          badgeEl.style.background = "rgba(34, 197, 94, 0.25)";
+          badgeEl.style.color = "#4ade80";
+        }
+        if (recEl) recEl.textContent = t.ispRecS;
+      } else if (minPing < 50) {
+        if (badgeEl) {
+          badgeEl.textContent = t.ispTierA;
+          badgeEl.style.background = "rgba(34, 197, 94, 0.2)";
+          badgeEl.style.color = "#22c55e";
+        }
+        if (recEl) recEl.textContent = t.ispRecA;
+      } else if (minPing < 75) {
+        if (badgeEl) {
+          badgeEl.textContent = t.ispTierB;
+          badgeEl.style.background = "rgba(234, 179, 8, 0.2)";
+          badgeEl.style.color = "#facc15";
+        }
+        if (recEl) recEl.textContent = t.ispRecB;
+      } else {
+        if (badgeEl) {
+          badgeEl.textContent = t.ispTierC;
+          badgeEl.style.background = "rgba(239, 68, 68, 0.2)";
+          badgeEl.style.color = "#f87171";
+        }
+        if (recEl) recEl.textContent = t.ispRecC;
+      }
+
+      // Subsea Cable Route Analysis
+      const routeIcon = document.getElementById("ispRouteIcon");
+      const routeBadge = document.getElementById("ispRouteBadge");
+      const routeTip = document.getElementById("ispRouteTip");
+      if (minPing < 48) {
+        if (routeIcon) routeIcon.textContent = "🌊";
+        if (routeBadge) {
+          routeBadge.textContent = t.routeSubseaDirect;
+          routeBadge.style.background = "rgba(34, 197, 94, 0.2)";
+          routeBadge.style.color = "#4ade80";
+        }
+        if (routeTip) routeTip.textContent = t.routeSubseaDirectTip;
+      } else if (minPing <= 110) {
+        if (routeIcon) routeIcon.textContent = "🟡";
+        if (routeBadge) {
+          routeBadge.textContent = t.routeTransit;
+          routeBadge.style.background = "rgba(234, 179, 8, 0.2)";
+          routeBadge.style.color = "#facc15";
+        }
+        if (routeTip) routeTip.textContent = t.routeTransitTip;
+      } else {
+        if (routeIcon) routeIcon.textContent = "🔴";
+        if (routeBadge) {
+          routeBadge.textContent = t.routeLoop;
+          routeBadge.style.background = "rgba(239, 68, 68, 0.2)";
+          routeBadge.style.color = "#f87171";
+        }
+        if (routeTip) routeTip.textContent = t.routeLoopTip;
+      }
+
+      chrome.storage.local.set({ calibratedVvoPing: minPing, calibratedIsp: ispName });
+    });
+  }
+
+  // Server Selection Mode Indicator & Detection
+  let lastServerMode = "unknown";
+  function updateServerModeUI(mode) {
+    lastServerMode = mode;
+    const t = I18N[currentLang] || I18N.ja;
+    const badgeEl = document.getElementById("serverModeStatusBadge");
+    const textEl = document.getElementById("serverModeStatusText");
+    const iconEl = document.getElementById("serverModeStatusIcon");
+    const tagEl = document.getElementById("serverModeStatusTag");
+    const btnSync = document.getElementById("btnSyncOptimizedLocation");
+
+    if (mode === "manual") {
+      if (badgeEl) {
+        badgeEl.style.background = "rgba(239, 68, 68, 0.12)";
+        badgeEl.style.borderColor = "rgba(239, 68, 68, 0.4)";
+      }
+      if (iconEl) iconEl.textContent = "⚠️";
+      if (textEl) {
+        textEl.textContent = t.statusModeManual;
+        textEl.style.color = "#f87171";
+      }
+      if (tagEl) {
+        tagEl.textContent = "MANUAL";
+        tagEl.style.background = "rgba(239, 68, 68, 0.25)";
+        tagEl.style.color = "#fca5a5";
+      }
+      if (btnSync) {
+        btnSync.style.boxShadow = "0 0 12px rgba(239, 68, 68, 0.45)";
+      }
+    } else if (mode === "optimized") {
+      if (badgeEl) {
+        badgeEl.style.background = "rgba(16, 185, 129, 0.1)";
+        badgeEl.style.borderColor = "rgba(16, 185, 129, 0.3)";
+      }
+      if (iconEl) iconEl.textContent = "✅";
+      if (textEl) {
+        textEl.textContent = t.statusModeOptimized;
+        textEl.style.color = "#34d399";
+      }
+      if (tagEl) {
+        tagEl.textContent = "PBMM";
+        tagEl.style.background = "rgba(16, 185, 129, 0.2)";
+        tagEl.style.color = "#6ee7b7";
+      }
+      if (btnSync) {
+        btnSync.style.boxShadow = "none";
+      }
+    } else {
+      if (badgeEl) {
+        badgeEl.style.background = "rgba(255, 255, 255, 0.04)";
+        badgeEl.style.borderColor = "rgba(255, 255, 255, 0.08)";
+      }
+      if (iconEl) iconEl.textContent = "⚡";
+      if (textEl) {
+        textEl.textContent = t.statusModeUnknown;
+        textEl.style.color = "#d4d4d8";
+      }
+      if (tagEl) {
+        tagEl.textContent = "AUTO";
+        tagEl.style.background = "rgba(255, 255, 255, 0.08)";
+        tagEl.style.color = "#888";
+      }
+      if (btnSync) {
+        btnSync.style.boxShadow = "none";
+      }
+    }
+  }
+
+  function checkServerSelectionMode() {
+    chrome.tabs.query({ url: "*://*.faceit.com/*" }, (tabs) => {
+      if (!Array.isArray(tabs) || tabs.length === 0) {
+        updateServerModeUI("unknown");
+        return;
+      }
+      const targetTab = tabs.find((x) => x.active) || tabs[0];
+      chrome.tabs.sendMessage(targetTab.id, { type: "CHECK_SERVER_SELECTION_MODE" }, (res) => {
+        if (chrome.runtime?.lastError || !res) {
+          updateServerModeUI("unknown");
+          return;
+        }
+        updateServerModeUI(res.mode || "unknown");
+      });
+    });
+  }
 
   // Force Optimized Location sync
   const btnSyncOpt = document.getElementById("btnSyncOptimizedLocation");
@@ -1357,16 +1916,29 @@
             btnSyncOpt.disabled = false;
             btnSyncOpt.style.opacity = "1";
             if (res?.ok) {
+              updateServerModeUI("optimized");
               if (textEl) textEl.textContent = t.btnSyncDone;
               btnSyncOpt.style.background = "linear-gradient(135deg, #16a34a 0%, #15803d 100%)";
               setTimeout(() => {
                 applyLanguage(currentLang);
+    if (typeof checkServerSelectionMode === "function") {
+      checkServerSelectionMode();
+    }
+    if (typeof renderMatchHistory === "function") {
+      renderMatchHistory();
+    }
                 btnSyncOpt.style.background = "";
               }, 2500);
             } else {
               if (textEl) textEl.textContent = t.btnSyncFail;
               setTimeout(() => {
                 applyLanguage(currentLang);
+    if (typeof checkServerSelectionMode === "function") {
+      checkServerSelectionMode();
+    }
+    if (typeof renderMatchHistory === "function") {
+      renderMatchHistory();
+    }
               }, 2500);
             }
           });
@@ -1378,6 +1950,12 @@
           if (textEl) textEl.textContent = t.btnSyncFail;
           setTimeout(() => {
             applyLanguage(currentLang);
+    if (typeof checkServerSelectionMode === "function") {
+      checkServerSelectionMode();
+    }
+    if (typeof renderMatchHistory === "function") {
+      renderMatchHistory();
+    }
           }, 2500);
         }
       });
@@ -1594,6 +2172,74 @@
     updateSubtogglesVisibility();
     saveSettings();
   }
+
+  function updatePartyRoleUI(role) {
+    lastPartyRole = role || "unknown";
+    const badge = document.getElementById("partyRoleStatusBadge");
+    const icon = document.getElementById("partyRoleIcon");
+    const text = document.getElementById("partyRoleText");
+    const tag = document.getElementById("partyRoleTag");
+    if (!badge || !icon || !text || !tag) return;
+    const t = I18N[currentLang] || I18N.ja;
+
+    if (role === "solo") {
+      icon.textContent = "🟢";
+      text.textContent = t.partyStatusSolo;
+      tag.textContent = "SOLO";
+      tag.style.background = "rgba(34, 197, 94, 0.15)";
+      tag.style.color = "#4ade80";
+      badge.style.borderColor = "rgba(34, 197, 94, 0.3)";
+      badge.style.background = "rgba(34, 197, 94, 0.05)";
+    } else if (role === "leader") {
+      icon.textContent = "👑";
+      text.textContent = t.partyStatusLeader;
+      tag.textContent = "LEADER";
+      tag.style.background = "rgba(234, 179, 8, 0.15)";
+      tag.style.color = "#facc15";
+      badge.style.borderColor = "rgba(234, 179, 8, 0.3)";
+      badge.style.background = "rgba(234, 179, 8, 0.05)";
+    } else if (role === "member") {
+      icon.textContent = "⚠️";
+      text.textContent = t.partyStatusMember;
+      tag.textContent = "MEMBER";
+      tag.style.background = "rgba(249, 115, 22, 0.15)";
+      tag.style.color = "#fb923c";
+      badge.style.borderColor = "rgba(249, 115, 22, 0.4)";
+      badge.style.background = "rgba(249, 115, 22, 0.08)";
+    } else {
+      icon.textContent = "👥";
+      text.textContent = t.partyStatusUnknown;
+      tag.textContent = "CHECK";
+      tag.style.background = "rgba(255, 255, 255, 0.06)";
+      tag.style.color = "#888";
+      badge.style.borderColor = "rgba(255, 255, 255, 0.08)";
+      badge.style.background = "rgba(255, 255, 255, 0.03)";
+    }
+  }
+
+  function checkPartyRole() {
+    try {
+      if (chrome && chrome.tabs && chrome.tabs.query) {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          if (tabs && tabs[0] && tabs[0].url && tabs[0].url.includes("faceit.com")) {
+            chrome.tabs.sendMessage(tabs[0].id, { type: "CHECK_PARTY_ROLE" }, (res) => {
+              if (chrome.runtime.lastError || !res) {
+                updatePartyRoleUI("solo");
+              } else {
+                updatePartyRoleUI(res.role || "solo");
+              }
+            });
+          } else {
+            updatePartyRoleUI("unknown");
+          }
+        });
+      }
+    } catch {
+      updatePartyRoleUI("unknown");
+    }
+  }
+
+  checkPartyRole();
 
   const btnExportCode = document.getElementById("btnExportCode");
   const exportCopyNotice = document.getElementById("exportCopyNotice");
@@ -1894,6 +2540,7 @@
                   { name: "📍 サーバー", value: "🟢 Vladivostok", inline: true },
                   { name: "🗺️ マップ", value: "🗺️ MIRAGE", inline: true },
                   { name: "⚖️ ELO差", value: "±59 ELO", inline: true },
+                  { name: "🗣️ チーム推奨言語 / Team Comms", value: "🇯🇵 JP (3) • 🇲🇳 MN (1) • 🇷🇺 RU (1)\n👉 **🇬🇧 英語コール推奨 (多国籍チーム)**", inline: false },
                   { name: "🆔 Match ID", value: "`demo-1-491f692e`", inline: true }
                 ],
                 footer: {
@@ -1924,6 +2571,7 @@
                   { name: "📍 Server", value: "🟢 Vladivostok", inline: true },
                   { name: "🗺️ Map", value: "🗺️ MIRAGE", inline: true },
                   { name: "⚖️ ELO Diff", value: "±59 ELO", inline: true },
+                  { name: "🗣️ Team Comms Advisor", value: "🇯🇵 JP (3) • 🇲🇳 MN (1) • 🇷🇺 RU (1)\n👉 **🇬🇧 English Calls Recommended (Mixed Team)**", inline: false },
                   { name: "🆔 Match ID", value: "`demo-1-491f692e`", inline: true }
                 ],
                 footer: {

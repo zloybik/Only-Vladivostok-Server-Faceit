@@ -57,11 +57,11 @@
   }
 
   function safeGetVersion() {
-    if (!isContextValid()) return "1.9.3";
+    if (!isContextValid()) return "1.9.5";
     try {
-      return chrome.runtime.getManifest()?.version || "1.9.3";
+      return chrome.runtime.getManifest()?.version || "1.9.5";
     } catch {
-      return "1.9.3";
+      return "1.9.5";
     }
   }
 
@@ -72,6 +72,8 @@
     spoofVvoPing: true,
     spoofNskPing: false,
     spoofKazPing: false,
+    autoSyncOptimizedLocation: true,
+    enablePartyLeaderGuard: true,
     notifyVvoSlots: true,
     enableQueueTimer: true,
     enableQueueBeep: true,
@@ -356,6 +358,10 @@
     .health { border-left:3px solid #aaa; }
     .health.bad { border-left-color:#fff; }
     .update { border-left:3px solid #fff; }
+    .panel.warning { border-color:#f59e0b; background:linear-gradient(180deg, #1c1507 0%, #111 100%); }
+    .panel.warning .eyebrow { color:#f59e0b; }
+    .panel.warning .actions button { background:#f59e0b; color:#000; font-weight:700; border:none; }
+    .panel.warning .actions button:hover { background:#d97706; }
     @keyframes pf-in { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
     @keyframes pf-pulse { from { opacity:1; } to { opacity:0.4; } }
     @media(max-width:600px) { .hud-bar { top:10px; right:10px; } .stack { right:10px; bottom:10px; } .panel img { width:52px; height:72px; flex-basis:52px; } }
@@ -873,7 +879,19 @@
         stopQueueTimer();
       } else {
         // User clicked the play button while idle -> starting queue
-        sendOptimizedPreferenceSync();
+        if (currentConfig.autoSyncOptimizedLocation !== false) {
+          const wasLegacy = isLegacyServerModeDetected();
+          sendOptimizedPreferenceSync((ok) => {
+            if (wasLegacy && ok) {
+              makePanel({
+                title: "⚡ キュー開始: 最適サーバー自動同期",
+                message: "手動サーバー選択(4制限)を自動解除し、ウラジオストク最優先に同期してキューを開始しました。",
+                sub: "Reset manual 4-server selection to Optimized Location before queue start.",
+                buttonLabel: "OK"
+              });
+            }
+          });
+        }
         if (currentConfig.enableAntiSnipe) {
           e.stopImmediatePropagation();
           e.preventDefault();
@@ -1035,6 +1053,175 @@
     } catch {
       return "🌐";
     }
+  }
+
+  const userCountryCache = new Map();
+
+  async function fetchRosterCountriesBatch(ids) {
+    if (!Array.isArray(ids) || ids.length === 0) return {};
+    const missingIds = ids.filter(id => id && !userCountryCache.has(id));
+    if (missingIds.length > 0) {
+      let payload = null;
+      try {
+        const resp = await fetch("https://www.faceit.com/api/user-summary/v2/list", {
+          method: "POST",
+          headers: {
+            "Accept": "application/json",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ ids: missingIds })
+        });
+        if (resp.ok) {
+          const json = await resp.json();
+          payload = json?.payload || json || null;
+        }
+      } catch {}
+
+      if (!payload) {
+        try {
+          const bgRes = await new Promise((resolve) => {
+            chrome.runtime.sendMessage({ type: "FETCH_USER_SUMMARY", ids: missingIds }, resolve);
+          });
+          if (bgRes?.ok && bgRes?.payload) {
+            payload = bgRes.payload;
+          }
+        } catch {}
+      }
+
+      if (payload && typeof payload === "object") {
+        for (const [id, user] of Object.entries(payload)) {
+          if (user && user.country) {
+            const c = user.country.toLowerCase();
+            userCountryCache.set(id, c);
+            if (user.nickname) userCountryCache.set(user.nickname.toLowerCase(), c);
+          }
+        }
+      }
+    }
+
+    const res = {};
+    for (const id of ids) {
+      if (userCountryCache.has(id)) {
+        res[id] = userCountryCache.get(id);
+      }
+    }
+    return res;
+  }
+
+  async function populateRosterCountries(roster) {
+    if (!Array.isArray(roster) || roster.length === 0) return roster;
+    const ids = roster.map(p => p.id || p.guid).filter(Boolean);
+    await fetchRosterCountriesBatch(ids);
+
+    for (const p of roster) {
+      const id = p.id || p.guid || "";
+      const nick = (p.nickname || p.gameName || "").toLowerCase();
+      if (id && userCountryCache.has(id)) {
+        p.country = userCountryCache.get(id);
+      } else if (nick && userCountryCache.has(nick)) {
+        p.country = userCountryCache.get(nick);
+      } else if (!p.country) {
+        // Fallback to DOM flag if rendered by Repeek or FACEIT
+        try {
+          if (nick) {
+            const playerLinks = document.querySelectorAll(`a[href*="/players/${nick}" i]`);
+            for (const link of playerLinks) {
+              const card = link.closest('[data-testid*="player"], [data-testid*="roster"], tr, div');
+              if (card) {
+                const flagImg = card.querySelector('img[src*="flags/"], img[src*="/flag"], img[class*="flag" i]');
+                if (flagImg) {
+                  const src = flagImg.getAttribute("src") || "";
+                  const alt = (flagImg.getAttribute("alt") || "").trim();
+                  const m = src.match(/flags\/(?:4x3\/)?([a-zA-Z]{2})\.(?:svg|png)/i) || (alt.length === 2 ? [null, alt] : null);
+                  if (m && m[1]) {
+                    p.country = m[1].toLowerCase();
+                    if (id) userCountryCache.set(id, p.country);
+                    userCountryCache.set(nick, p.country);
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        } catch {}
+        if (!p.country) p.country = "other";
+      }
+    }
+    return roster;
+  }
+
+  function analyzeTeamComms(roster, isJa) {
+    if (!Array.isArray(roster) || roster.length === 0) return null;
+    const counts = {};
+    let total = 0;
+    for (const p of roster) {
+      const code = (p.country || "other").toLowerCase();
+      counts[code] = (counts[code] || 0) + 1;
+      total++;
+    }
+
+    const flagEntries = Object.entries(counts).filter(([code]) => code !== "other");
+    const displayEntries = flagEntries.length > 0 ? flagEntries : Object.entries(counts);
+
+    const flagSummary = displayEntries
+      .sort((a, b) => b[1] - a[1])
+      .map(([code, count]) => `${getFlagEmoji(code)} ${code.toUpperCase()} (${count})`)
+      .join(" • ");
+
+    const jpCount = counts["jp"] || 0;
+    const ruCount = (counts["ru"] || 0) + (counts["kz"] || 0) + (counts["by"] || 0);
+
+    let recommendationJa = "";
+    let recommendationEn = "";
+    let badgeColor = "#3b82f6";
+    let tag = "EN CALLS";
+
+    if (jpCount >= 4 || (jpCount >= 3 && total <= 5 && ruCount === 0)) {
+      recommendationJa = "🇯🇵 日本語チーム (全員日本人 / 日本語VC推奨)";
+      recommendationEn = "🇯🇵 Japanese Comms (All/Mostly JP players)";
+      badgeColor = "#22c55e";
+      tag = "JP VC";
+    } else if (jpCount >= 2 && ruCount <= 1) {
+      recommendationJa = "🇯🇵/🇬🇧 日英併用 (JPメイン / 英語コール推奨)";
+      recommendationEn = "🇯🇵/🇬🇧 English Calls & JP Comms";
+      badgeColor = "#38bdf8";
+      tag = "JP/EN";
+    } else if (ruCount >= 3) {
+      recommendationJa = "🌐 英語・ロシア語チーム (English / Russian Calls)";
+      recommendationEn = "🌐 English / Russian Comms";
+      badgeColor = "#eab308";
+      tag = "RU/EN";
+    } else {
+      recommendationJa = "🇬🇧 英語コール推奨 (多国籍チーム / English Calls)";
+      recommendationEn = "🇬🇧 English Calls Recommended (Mixed Team)";
+      badgeColor = "#3b82f6";
+      tag = "EN CALLS";
+    }
+
+    return {
+      flagSummary,
+      recommendation: isJa ? recommendationJa : recommendationEn,
+      recommendationJa,
+      recommendationEn,
+      badgeColor,
+      tag,
+      counts,
+      jpCount
+    };
+  }
+
+  const notifiedCommsRooms = new Set();
+  function notifyRoomCommsAdvisor(matchId, comms) {
+    if (!matchId || notifiedCommsRooms.has(matchId) || !comms) return;
+    notifiedCommsRooms.add(matchId);
+    makePanel({
+      title: "🗣️ チームVC推奨言語 / Team Comms Advisor",
+      message: comms.recommendationJa,
+      sub: `${comms.flagSummary} • ${comms.recommendationEn}`,
+      kind: "info",
+      buttonLabel: "了解 / Understood",
+      onAction: () => {}
+    });
   }
 
   let cachedMyNick = "";
@@ -1212,12 +1399,14 @@
     }).join("\n");
   }
 
-  const attemptedMatchFetches = new Set();
+  const matchDetailsCache = new Map();
   function requestMatchDetailsViaBackground(matchId) {
-    if (!matchId || attemptedMatchFetches.has(matchId)) {
+    if (!matchId || matchId === "index" || matchId.length < 5) {
       return Promise.resolve(null);
     }
-    attemptedMatchFetches.add(matchId);
+    if (matchDetailsCache.has(matchId)) {
+      return Promise.resolve(matchDetailsCache.get(matchId));
+    }
 
     return new Promise((resolve) => {
       if (!isContextValid()) return resolve(null);
@@ -1227,6 +1416,7 @@
             if (chrome.runtime?.lastError || !res?.ok || !res?.data) {
               resolve(null);
             } else {
+              matchDetailsCache.set(matchId, res.data);
               resolve(res.data);
             }
           } catch {
@@ -1239,7 +1429,171 @@
     });
   }
 
-  function sendRichMatchRoomDiscord(matchId, matchData, myId, myNick) {
+  async function updateRoomCommsAdvisor(matchId, matchData = null) {
+    if (!matchId || matchId === "index" || matchId.length < 5) return null;
+    let data = matchData;
+    if (!data) {
+      try {
+        data = await requestMatchDetailsViaBackground(matchId);
+      } catch {}
+    }
+    if (!data || !data.teams) return null;
+
+    const { id: myId, nick: myNick } = getCurrentUserInfo();
+    const f1 = data.teams.faction1;
+    const f2 = data.teams.faction2;
+    const f1Roster = Array.isArray(f1?.roster) ? f1.roster : [];
+    const f2Roster = Array.isArray(f2?.roster) ? f2.roster : [];
+
+    const f1HasMe = f1Roster.some(p => (myId && (p.id === myId || p.guid === myId)) || (myNick && (p.nickname || "").toLowerCase() === myNick.toLowerCase()));
+    const f2HasMe = f2Roster.some(p => (myId && (p.id === myId || p.guid === myId)) || (myNick && (p.nickname || "").toLowerCase() === myNick.toLowerCase()));
+
+    const myTeamRoster = f2HasMe ? f2Roster : (f1Roster.length > 0 ? f1Roster : f2Roster);
+    if (!myTeamRoster || myTeamRoster.length === 0) return null;
+
+    await populateRosterCountries(myTeamRoster);
+    const isJa = (currentConfig.lang || "ja") === "ja";
+    const comms = analyzeTeamComms(myTeamRoster, isJa);
+    if (comms) {
+      safeStorageSet({ lastTeamComms: comms });
+      return comms;
+    }
+    return null;
+  }
+
+  // Record match server details to local history
+  const MATCH_HISTORY_STORAGE_KEY = "pathfinder_match_history";
+  const MAX_MATCH_HISTORY_ITEMS = 10;
+
+  function recordMatchHistory(matchId, matchData = null, connectCmd = "") {
+    if (!isContextValid() || !matchId || matchId === "index" || matchId.length < 5) return;
+
+    async function saveEntry(data) {
+      try {
+        // STRICT: Only record match if the current logged-in user is an active player in this match!
+        const { id: myId, nick: myNick, acceptedMid } = getCurrentUserInfo();
+        if (!isPlayerInMatch(data, myId, myNick, acceptedMid)) {
+          return;
+        }
+
+        const isActive = isMatchActive(data);
+
+        const rawLoc = data?.locations?.[0]?.guid ||
+                       data?.locations?.[0]?.name ||
+                       (typeof data?.locations?.[0] === "string" ? data.locations[0] : "") ||
+                       data?.voting?.location?.pick?.[0] ||
+                       data?.configured_server?.location ||
+                       "";
+        let serverName = "Vladivostok";
+        let serverCode = "VVO";
+        let isVlad = true;
+        if (rawLoc) {
+          const lower = rawLoc.toLowerCase();
+          if (lower.includes("vladivostok")) {
+            serverName = "Vladivostok";
+            serverCode = "VVO";
+            isVlad = true;
+          } else if (lower.includes("novosibirsk")) {
+            serverName = "Novosibirsk";
+            serverCode = "NSK";
+            isVlad = false;
+          } else if (lower.includes("kazakhstan")) {
+            serverName = "Kazakhstan";
+            serverCode = "KAZ";
+            isVlad = false;
+          } else if (lower.includes("moscow")) {
+            serverName = "Moscow";
+            serverCode = "MSK";
+            isVlad = false;
+          } else if (lower.includes("yekaterinburg") || lower.includes("svx")) {
+            serverName = "Yekaterinburg";
+            serverCode = "SVX";
+            isVlad = false;
+          } else {
+            serverName = rawLoc;
+            serverCode = rawLoc.slice(0, 3).toUpperCase();
+            isVlad = false;
+          }
+        }
+
+        // Determine if server was explicitly allowed by user's configuration
+        let isAllowed = false;
+        if (serverCode === "VVO") {
+          isAllowed = true;
+        } else if (serverCode === "NSK") {
+          isAllowed = Boolean(currentConfig.allowNovosibirsk);
+        } else if (serverCode === "KAZ") {
+          isAllowed = Boolean(currentConfig.allowKazakhstan);
+        } else {
+          isAllowed = false;
+        }
+
+        const rawMap = data?.maps?.[0]?.name ||
+                       data?.maps?.[0]?.class_name ||
+                       data?.voting?.map?.pick?.[0] ||
+                       "";
+        const mapName = rawMap ? rawMap.replace(/^de_/i, "").toUpperCase() : "CS2";
+
+        let hostPort = "";
+        const cmd = connectCmd || extractConnectCommand(data);
+        if (cmd) {
+          const m = cmd.match(/connect\s+([0-9a-zA-Z.:]+)/i);
+          if (m && m[1]) hostPort = m[1];
+        }
+
+        const comms = await updateRoomCommsAdvisor(matchId, data);
+        if (comms && isActive) {
+          notifyRoomCommsAdvisor(matchId, comms);
+        }
+
+        safeStorageGet([MATCH_HISTORY_STORAGE_KEY], (res) => {
+          let history = Array.isArray(res?.[MATCH_HISTORY_STORAGE_KEY]) ? res[MATCH_HISTORY_STORAGE_KEY] : [];
+          const existingIdx = history.findIndex((x) => x.id === matchId);
+
+          // STRICT: Do NOT record old finished/archived matches when simply opening past match rooms!
+          if (!isActive && existingIdx < 0) {
+            return;
+          }
+          const item = {
+            id: matchId,
+            timestamp: existingIdx >= 0 ? history[existingIdx].timestamp : Date.now(),
+            server: serverName,
+            code: serverCode,
+            isVlad: isVlad,
+            isAllowed: isAllowed,
+            map: mapName,
+            ip: hostPort || (existingIdx >= 0 ? history[existingIdx].ip : "")
+          };
+
+          if (existingIdx >= 0) {
+            history[existingIdx] = item;
+          } else {
+            history.unshift(item);
+          }
+
+          if (history.length > MAX_MATCH_HISTORY_ITEMS) {
+            history = history.slice(0, MAX_MATCH_HISTORY_ITEMS);
+          }
+
+          safeStorageSet({ [MATCH_HISTORY_STORAGE_KEY]: history });
+        });
+      } catch {}
+    }
+
+    if (matchData) {
+      saveEntry(matchData);
+    } else {
+      try {
+        chrome.runtime.sendMessage({ type: "FETCH_MATCH_DETAILS", matchId }, (res) => {
+          if (res?.ok && res?.data) {
+            saveEntry(res.data);
+          }
+        });
+      } catch {}
+    }
+  }
+
+  async function sendRichMatchRoomDiscord(matchId, matchData, myId, myNick) {
     const isJa = (currentConfig.discordLang || "ja") === "ja";
     const roomUrl = `https://www.faceit.com/${isJa ? "ja" : "en"}/cs2/room/${matchId}`;
     const mention = formatDiscordMentions(currentConfig.discordCustomPing, "@here");
@@ -1253,6 +1607,7 @@
 
     const f1Roster = Array.isArray(f1.roster) ? f1.roster : [];
     const f2Roster = Array.isArray(f2.roster) ? f2.roster : [];
+    await populateRosterCountries([...f1Roster, ...f2Roster]);
 
     // Calculate party counts to highlight premade duos/trios/stacks
     const partyCounts = {};
@@ -1334,6 +1689,18 @@
         value: `±${diff} ELO`,
         inline: true
       });
+    }
+
+    const myTeamRoster = f1HasMe ? f1Roster : (f2HasMe ? f2Roster : null);
+    if (myTeamRoster && myTeamRoster.length > 0) {
+      const comms = analyzeTeamComms(myTeamRoster, isJa);
+      if (comms) {
+        fields.push({
+          name: isJa ? "🗣️ チーム推奨言語 / Team Comms" : "🗣️ Team Comms Advisor",
+          value: `${comms.flagSummary}\n👉 **${comms.recommendation}**`,
+          inline: false
+        });
+      }
     }
 
     fields.push({
@@ -1434,6 +1801,7 @@
 
   function sendServerIpDiscord(matchId, matchData, connectCmd) {
     if (!connectCmd) return;
+    recordMatchHistory(matchId, matchData, connectCmd);
     const isJa = (currentConfig.discordLang || "ja") === "ja";
     const roomUrl = `https://www.faceit.com/${isJa ? "ja" : "en"}/cs2/room/${matchId}`;
     const mention = formatDiscordMentions(currentConfig.discordCustomPing, "@here");
@@ -1617,6 +1985,7 @@
       // Mark as pinged BEFORE sending to prevent duplicate triggers
       markMatchAsPinged(matchId);
 
+      recordMatchHistory(matchId, matchData);
       // Build and send the rich Embed!
       sendRichMatchRoomDiscord(matchId, matchData, myId, myNick);
 
@@ -2369,6 +2738,7 @@
     if (match && match[1]) {
       const matchId = match[1];
       if (matchId !== "index" && matchId.length >= 5) {
+        updateRoomCommsAdvisor(matchId);
         if (activeChatRelayMatchId && activeChatRelayMatchId !== matchId) {
           stopChatRelay("Switched match room");
           stopDiscordInboundBridge("Switched match room");
@@ -2392,6 +2762,7 @@
       lastCheckedRoomPath = currentPath;
       const matchId = match[1];
       if (matchId === "index" || matchId.length < 5) return;
+      recordMatchHistory(matchId);
       processMatchRoom(matchId);
     }
   }
@@ -3000,6 +3371,11 @@
             }
           })
         }).then((res) => {
+          if (res.ok) {
+            try {
+              window.sessionStorage.setItem("pathfinder_pbmm_opt_in", "true");
+            } catch {}
+          }
           if (typeof callback === "function") callback(res.ok);
         }).catch(() => {
           if (typeof callback === "function") callback(false);
@@ -3010,15 +3386,135 @@
     if (typeof callback === "function") callback(false);
   }
 
+  // Detect manual (legacy) server selection mode on FACEIT
+  function isLegacyServerModeDetected() {
+    try {
+      const bodyText = document.body ? document.body.innerText || "" : "";
+      if (/Select a minimum of 4 servers/i.test(bodyText) || /4つ以上のサーバーを選択/i.test(bodyText)) {
+        return true;
+      }
+      if (window.sessionStorage.getItem("pathfinder_pbmm_opt_in") === "false") {
+        return true;
+      }
+    } catch {}
+    return false;
+  }
+
+  let hasShownLegacyWarning = false;
+  function checkAndWarnLegacyMode() {
+    if (hasShownLegacyWarning) return;
+    if (isFaceitInQueue()) return;
+    const path = location.pathname.toLowerCase();
+    if (!path.includes("/matchmaking") && path !== "/" && path !== "/en" && path !== "/ja") {
+      return;
+    }
+    if (isLegacyServerModeDetected()) {
+      hasShownLegacyWarning = true;
+      makePanel({
+        title: "⚠️ 手動サーバー選択を検出 / Manual Selection",
+        message: "4サーバー手動選択になっています。ウラジオストク以外（エカテリンブルク等）にマッチする危険があります。",
+        sub: "Manual 4-server selection is active. Non-Vladivostok servers may be picked. Click Fix Now to restore Optimized Location.",
+        kind: "warning",
+        buttonLabel: "⚡ 最適サーバーに修正 / Fix Now",
+        onAction: () => {
+          sendOptimizedPreferenceSync((ok) => {
+            if (ok) {
+              makePanel({
+                title: "✅ 最適サーバーに同期完了 / Fixed",
+                message: "自動選択（PBMM）に復帰しました。ウラジオストクが最優先されます。",
+                sub: "Successfully restored Optimized Server Location."
+              });
+            }
+          });
+        }
+      });
+    }
+  }
+
   // Listen for popup request to force sync Optimized Location
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg?.type === "GET_CURRENT_ROOM_COMMS") {
+      (async () => {
+        try {
+          const roomMatch = location.pathname.match(/\/(?:cs2|csgo)?\/?room\/([a-zA-Z0-9-]+)/i);
+          if (roomMatch && roomMatch[1] && roomMatch[1] !== "index") {
+            const comms = await updateRoomCommsAdvisor(roomMatch[1]);
+            if (comms) {
+              sendResponse({ ok: true, comms });
+              return;
+            }
+          }
+        } catch {}
+        sendResponse({ ok: false });
+      })();
+      return true;
+    }
     if (msg?.type === "FORCE_SYNC_OPTIMIZED_LOCATION") {
       sendOptimizedPreferenceSync((ok) => {
         sendResponse({ ok });
       });
       return true;
     }
+    if (msg?.type === "CHECK_SERVER_SELECTION_MODE") {
+      const isLegacy = isLegacyServerModeDetected();
+      sendResponse({ mode: isLegacy ? "manual" : "optimized" });
+      return true;
+    }
+    if (msg?.type === "CHECK_PARTY_ROLE") {
+      sendResponse({ role: detectPartyState() });
+      return true;
+    }
   });
+
+  // Detect party status (solo, leader, member)
+  function detectPartyState() {
+    try {
+      const bodyText = document.body ? document.body.innerText || "" : "";
+      const hasNonLeaderText = /Waiting for (?:the )?party leader/i.test(bodyText) ||
+                               /リーダーの開始を待機中/i.test(bodyText) ||
+                               /ホストの待機中/i.test(bodyText);
+      const readyBtn = document.querySelector("button[data-testid*='ready' i], button[class*='ReadyButton' i]");
+      const isMemberReady = readyBtn && /READY|準備完了/i.test(readyBtn.textContent || "");
+      const hasCrown = Boolean(document.querySelector("[data-testid*='crown' i], [aria-label*='leader' i], svg[class*='crown' i]"));
+      
+      const partySlots = document.querySelectorAll("[data-testid*='party-member'], [data-testid*='player-card'], [class*='PartyMember'], [data-testid*='party-slot']:not([data-testid*='empty'])");
+
+      if (hasNonLeaderText || isMemberReady) return "member";
+      if (partySlots.length > 1) {
+        return hasCrown ? "leader" : "member";
+      }
+      if (/Party Leader|パティリーダー/i.test(bodyText)) return "leader";
+      return "solo";
+    } catch {
+      return "solo";
+    }
+  }
+
+  let hasShownPartyLeaderWarning = false;
+  function checkAndWarnPartyLeader() {
+    if (currentConfig.enablePartyLeaderGuard === false) return;
+    const path = location.pathname.toLowerCase();
+    if (!path.includes("/matchmaking") && path !== "/" && path !== "/en" && path !== "/ja") {
+      return;
+    }
+    const role = detectPartyState();
+    if (role === "member") {
+      if (!hasShownPartyLeaderWarning) {
+        hasShownPartyLeaderWarning = true;
+        makePanel({
+          title: "⚠️ Party Leader Guard / パティリーダー監視",
+          message: "あなたはパティリーダーではありません。リーダーにウラジオストク優先（Optimized Location）が有効になっているか確認してください。",
+          sub: "You are queuing as a party member. Ensure the party leader has 'Optimized Location' enabled to avoid distant servers.",
+          kind: "warning",
+          buttonLabel: "了解 / Understood",
+          onAction: () => {}
+        });
+      }
+    } else {
+      // Reset flag if player left party or became leader
+      hasShownPartyLeaderWarning = false;
+    }
+  }
 
   // Periodic poll to maintain queue state
   const pollInterval = setInterval(() => {
@@ -3028,6 +3524,8 @@
     }
 
     checkMatchRoomUrl();
+    checkAndWarnLegacyMode();
+    checkAndWarnPartyLeader();
 
     // Check if live match / knife round has begun to immediately halt chat relay
     if ((chatObserver || inboundBridgeTimer) && isMatchInLiveGame() && Date.now() >= inboundTestModeExpiry) {

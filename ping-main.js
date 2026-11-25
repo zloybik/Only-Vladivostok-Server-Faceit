@@ -114,8 +114,28 @@
     try {
       const rawUrl = typeof resource === "string" ? resource : resource instanceof URL ? resource.href : resource?.url;
       if (rawUrl && typeof rawUrl === "string" && rawUrl.includes("/api/play-preferences/v1/preferences/entities")) {
-        if (init && init.body && typeof init.body === "string" && init.body.includes('"ping_based_matchmaking_opt_in":false')) {
-          init.body = init.body.replace('"ping_based_matchmaking_opt_in":false', '"ping_based_matchmaking_opt_in":true');
+        if (init && init.body && typeof init.body === "string") {
+          if (init.body.includes('"ping_based_matchmaking_opt_in":false')) {
+            init.body = init.body.replace('"ping_based_matchmaking_opt_in":false', '"ping_based_matchmaking_opt_in":true');
+          }
+          try {
+            window.sessionStorage.setItem("pathfinder_pbmm_opt_in", "true");
+          } catch {}
+        } else if (!init || !init.method || init.method.toUpperCase() === "GET") {
+          const res = nativeFetch.apply(this, arguments);
+          res.then((r) => {
+            try {
+              r.clone().json().then((data) => {
+                const optIn = data?.preferences?.ping_based_matchmaking_opt_in;
+                if (optIn === false) {
+                  window.sessionStorage.setItem("pathfinder_pbmm_opt_in", "false");
+                } else if (optIn === true) {
+                  window.sessionStorage.setItem("pathfinder_pbmm_opt_in", "true");
+                }
+              }).catch(() => {});
+            } catch {}
+          }).catch(() => {});
+          return res;
         }
       }
     } catch {}
