@@ -57,11 +57,11 @@
   }
 
   function safeGetVersion() {
-    if (!isContextValid()) return "1.9.2";
+    if (!isContextValid()) return "1.9.3";
     try {
-      return chrome.runtime.getManifest()?.version || "1.9.2";
+      return chrome.runtime.getManifest()?.version || "1.9.3";
     } catch {
-      return "1.9.2";
+      return "1.9.3";
     }
   }
 
@@ -849,8 +849,6 @@
 
   // Intercept user clicks directly on page
   document.addEventListener("click", (e) => {
-    setTimeout(sanitizeServerPingPopover, 50);
-    setTimeout(sanitizeServerPingPopover, 250);
     if (!isContextValid()) return;
     // Ignore programmatic / synthetic clicks from our extension
     if (!e.isTrusted) return;
@@ -2969,123 +2967,6 @@
     } catch {}
   }
 
-  // Sanitize / Override ServerPingPopoverV2 (Optimized Server Location modal)
-  function sanitizeServerPingPopover() {
-    try {
-      const serverWrappers = document.querySelectorAll('[class*="ServerItem__Wrapper"]');
-      if (!serverWrappers || !serverWrappers.length) return;
-
-      // Update "Possible" section headers to "OUT OF BOUNDS" if present
-      const sectionHeaders = document.querySelectorAll('[class*="ServerPingList__SectionHeader"] span[class*="Overline"]');
-      sectionHeaders.forEach((span) => {
-        if (/possible/i.test((span.textContent || "").trim())) {
-          span.textContent = "OUT OF BOUNDS (HIGH PING)";
-          span.style.setProperty("color", "#ef4444", "important");
-        }
-      });
-
-      serverWrappers.forEach((item) => {
-        const nameEl = item.querySelector('[class*="ServerIdentity__Name"]');
-        if (!nameEl) return;
-        const name = (nameEl.textContent || "").trim().toLowerCase();
-
-        // Check if server is exempt / allowed
-        let isAllowed = false;
-        if (name.includes("vladivostok") || name.includes("vdk") || name.includes("vvo")) {
-          isAllowed = true;
-        } else if (currentConfig.allowNovosibirsk && (name.includes("novosibirsk") || name.includes("nsk"))) {
-          isAllowed = true;
-        } else if (currentConfig.allowKazakhstan && (name.includes("kazakhstan") || name.includes("almaty") || name.includes("astana") || name.includes("kz"))) {
-          isAllowed = true;
-        }
-
-        const pingEl = item.querySelector('[class*="ServerItem__PingValue"]');
-        if (!pingEl) return;
-
-        if (!isAllowed) {
-          const text = (pingEl.textContent || "").trim();
-          const m = text.match(/^(\d+)/);
-          if (m) {
-            const val = parseInt(m[1], 10);
-            if (val < 500) {
-              pingEl.textContent = `${1000 + val}ms`;
-            }
-          }
-          pingEl.style.setProperty("color", "#ff4747", "important");
-          pingEl.style.setProperty("font-weight", "700", "important");
-
-          const chip = item.querySelector('[class*="ServerItem__PingChip"]');
-          if (chip) {
-            chip.style.setProperty("color", "#ff4747", "important");
-            chip.querySelectorAll("i, svg").forEach((iconEl) => {
-              iconEl.style.setProperty("color", "#ff4747", "important");
-            });
-
-            // Turn signal bars to 1 red bar + 3 dimmed grey bars
-            const rects = chip.querySelectorAll("rect");
-            rects.forEach((rect, idx) => {
-              if (idx === 0) {
-                rect.style.setProperty("fill", "#ff4747", "important");
-                rect.style.setProperty("color", "#ff4747", "important");
-                rect.style.setProperty("opacity", "1", "important");
-              } else {
-                rect.style.setProperty("fill", "#383838", "important");
-                rect.style.setProperty("color", "#383838", "important");
-                rect.style.setProperty("opacity", "0.22", "important");
-              }
-            });
-          }
-        } else {
-          if (name.includes("vladivostok") && currentConfig.spoofVvoPing !== false) {
-            const text = (pingEl.textContent || "").trim();
-            const m = text.match(/^(\d+)/);
-            if (m && parseInt(m[1], 10) > 40) {
-              pingEl.textContent = "17ms";
-            }
-            pingEl.style.setProperty("color", "#22c55e", "important");
-
-            const chip = item.querySelector('[class*="ServerItem__PingChip"]');
-            if (chip) {
-              chip.style.setProperty("color", "#22c55e", "important");
-              chip.querySelectorAll("i, svg").forEach((iconEl) => {
-                iconEl.style.setProperty("color", "#22c55e", "important");
-              });
-              const rects = chip.querySelectorAll("rect");
-              rects.forEach((rect) => {
-                rect.style.setProperty("fill", "#22c55e", "important");
-                rect.style.setProperty("opacity", "1", "important");
-              });
-            }
-          }
-        }
-      });
-    } catch { }
-  }
-
-  // Fast check whenever popover/server items exist in DOM
-  setInterval(() => {
-    if (!isContextValid()) return;
-    if (document.querySelector('[class*="ServerItem__Wrapper"]')) {
-      sanitizeServerPingPopover();
-    }
-  }, 150);
-
-  try {
-    const popoverObserver = new MutationObserver((mutations) => {
-      for (const m of mutations) {
-        if (m.addedNodes && m.addedNodes.length > 0) {
-          for (const node of m.addedNodes) {
-            if (node.nodeType === 1 && (node.matches?.('[class*="ServerPingPopover"], [class*="ServerItem__Wrapper"]') || node.querySelector?.('[class*="ServerPingPopover"], [class*="ServerItem__Wrapper"]'))) {
-              sanitizeServerPingPopover();
-              return;
-            }
-          }
-        }
-      }
-    });
-    popoverObserver.observe(document.body, { childList: true, subtree: true });
-  } catch { }
-
   // User-initiated Optimized Server Location sync
   function sendOptimizedPreferenceSync(callback) {
     try {
@@ -3146,7 +3027,6 @@
       return;
     }
 
-    sanitizeServerPingPopover();
     checkMatchRoomUrl();
 
     // Check if live match / knife round has begun to immediately halt chat relay
