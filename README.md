@@ -50,13 +50,8 @@ Chrome、Microsoft Edge、Brave など Chromium 系ブラウザに対応して�
 
 > ⚠️ **重要: EUリージョンにウラジオストク（ロシア）サーバーが表示されない場合**  
 > FACEITのアカウントや地域設定によっては、EUリージョンのサーバー一覧にウラジオストクやノヴォシビルスクが表示されないことがあります。その場合は以下のいずれかを試してください：  
-> - **方法 A（推奨・拡張機能内蔵）:** Pathfinderのポップアップを開き、**「🌐 RU プロキシ」** タブからプロキシを有効化してFACEITを再読み込みします。  
-> - **方法 B（外部VPN）:** 一時的に **ロシア（Russia）** または **カザフスタン（Kazakhstan）** のVPNに接続してFACEITを開き、サーバーリストを更新します（無料の [VPN Obratno](https://vpnobratno.info/) や [VPNGate](https://www.vpngate.net/ja/) 等で接続可能）。
-
-> ⚠️ **重要: EUリージョンにウラジオストク（ロシア）サーバーが表示されない場合**  
-> FACEITのアカウントや地域設定によっては、EUリージョンのサーバー一覧にウラジオストクやノヴォシビルスクが表示されないことがあります。その場合は以下のいずれかを試してください：  
-> - **方法 A（推奨・拡張機能内蔵）:** Pathfinderのポップアップを開き、**「🌐 RU プロキシ」** タブからプロキシを有効化してFACEITを再読み込みします。  
-> - **方法 B（外部VPN）:** 一時的に **ロシア（Russia）** または **カザフスタン（Kazakhstan）** のVPNに接続してFACEITを開き、サーバーリストを更新します（無料の [VPN Obratno](https://vpnobratno.info/) や [VPNGate](https://www.vpngate.net/ja/) 等で接続可能）。
+> - **方法 A（推奨・無料VPN）:** 一時的に **ロシア（Russia）** または **カザフスタン（Kazakhstan）** のVPNに接続してFACEITを開き、サーバーリストを更新します（無料の [VPN Obratno](https://vpnobratno.info/) や [VPNGate](https://www.vpngate.net/ja/) 等で接続可能）。一度認識されればVPNを切断してもサーバーは維持されます。  
+> - **方法 B（カスタムプロキシ）:** ご自身でお持ちのロシアSOCKS5/HTTPプロキシがある場合は、Pathfinderの **「🌐 RU プロキシ」** タブに設定して有効化することで、FACEITの通信のみをプロキシ経由にルーティングできます。
 
 > **💡 パーティでプレイする場合:**  
 > ロビー内のメンバー全員が同じ設定で検索できるよう、拡張機能の **「パーティ同期」** タブからコード（`PF1-...`）を共有して設定を同期することを推奨します。
@@ -101,7 +96,8 @@ Chrome、Microsoft Edge、Brave など Chromium 系ブラウザに対応して�
 * **双方向チャットリレー**: Discordから入力したメッセージをFACEITのチームチャットへ即座に転送（ナイフラウンド開始まで有効）。
 * **自動マッチ通知**: マッチ成立時に `@everyone` メンション、ロスター情報、CS2接続コマンド（`connect ip:port`）を自動送信。
 
-### 7. 🌐 内蔵 RU プロキシ (Built-in RU Proxy)
+### 7. 🌐 カスタム RU プロキシ機能 (Custom RU Proxy)
+* **外部プロキシ設定**: ご自身でお持ちのロシアSOCKS5/HTTPプロキシを設定可能。
 * **PACスクリプト完全分離**: `*.faceit.com` のトラフィックのみを安全にルーティング（一般ブラウジングには一切影響しません）。
 * **自動フェイルオーバー**: プロキシ接続に不具合が発生した際は、即座に通常接続（Direct）へ自動復帰。
 
@@ -111,12 +107,7 @@ Chrome、Microsoft Edge、Brave など Chromium 系ブラウザに対応して�
 
 <details>
 <summary><b>Q. EUリージョンを選択してもウラジオストクサーバーが表示されません。</b></summary>
-A. FACEIT側の地域判定により非表示になっている場合があります。Pathfinderのポップアップ内にある **「🌐 RU プロキシ」** をONにしてFACEITを再読み込みするか、一時的にロシアまたはカザフスタンのVPN（無料の [VPN Obratno](https://vpnobratno.info/) や [VPNGate](https://www.vpngate.net/ja/) など）に接続してFACEITを開いてください。一度認識されればサーバーリストに表示されるようになります。
-</details>
-
-<details>
-<summary><b>Q. EUリージョンを選択してもウラジオストクサーバーが表示されません。</b></summary>
-A. FACEIT側の地域判定により非表示になっている場合があります。Pathfinderのポップアップ内にある **「🌐 RU プロキシ」** をONにしてFACEITを再読み込みするか、一時的にロシアまたはカザフスタンのVPN（無料の [VPN Obratno](https://vpnobratno.info/) や [VPNGate](https://www.vpngate.net/ja/) など）に接続してFACEITを開いてください。一度認識されればサーバーリストに表示されるようになります。
+A. FACEIT側の地域判定により非表示になっている場合があります。一時的にロシアまたはカザフスタンのVPN（無料の [VPN Obratno](https://vpnobratno.info/) や [VPNGate](https://www.vpngate.net/ja/) など）に接続してFACEITを再読み込みしてください。一度認識されればサーバーリストに表示されるようになり、その後はVPNをオフにしてプレイ可能です。ご自身でロシアプロキシをお持ちの場合は、拡張機能の **「🌐 RU プロキシ」** タブに登録して利用することもできます。
 </details>
 
 <details>
