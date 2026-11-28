@@ -48,6 +48,16 @@ Chrome、Microsoft Edge、Brave など Chromium 系ブラウザに対応して�
 2. FACEITのマッチメイキング設定で、リージョンが **EU** になっていることを確認します。
 3. 通常通りキューを開始すると、画面右上に **Queue Guard HUD** が表示され、ウラジオストクサーバーが最優先でマッチングされます！
 
+> ⚠️ **重要: EUリージョンにウラジオストク（ロシア）サーバーが表示されない場合**  
+> FACEITのアカウントや地域設定によっては、EUリージョンのサーバー一覧にウラジオストクやノヴォシビルスクが表示されないことがあります。その場合は以下のいずれかを試してください：  
+> - **方法 A（推奨・拡張機能内蔵）:** Pathfinderのポップアップを開き、**「🌐 RU プロキシ」** タブからプロキシを有効化してFACEITを再読み込みします。  
+> - **方法 B（外部VPN）:** 一時的に **ロシア（Russia）** または **カザフスタン（Kazakhstan）** のVPNに接続してFACEITを開き、サーバーリストを更新します（無料の [VPN Obratno](https://vpnobratno.info/) や [VPNGate](https://www.vpngate.net/ja/) 等で接続可能）。
+
+> ⚠️ **重要: EUリージョンにウラジオストク（ロシア）サーバーが表示されない場合**  
+> FACEITのアカウントや地域設定によっては、EUリージョンのサーバー一覧にウラジオストクやノヴォシビルスクが表示されないことがあります。その場合は以下のいずれかを試してください：  
+> - **方法 A（推奨・拡張機能内蔵）:** Pathfinderのポップアップを開き、**「🌐 RU プロキシ」** タブからプロキシを有効化してFACEITを再読み込みします。  
+> - **方法 B（外部VPN）:** 一時的に **ロシア（Russia）** または **カザフスタン（Kazakhstan）** のVPNに接続してFACEITを開き、サーバーリストを更新します（無料の [VPN Obratno](https://vpnobratno.info/) や [VPNGate](https://www.vpngate.net/ja/) 等で接続可能）。
+
 > **💡 パーティでプレイする場合:**  
 > ロビー内のメンバー全員が同じ設定で検索できるよう、拡張機能の **「パーティ同期」** タブからコード（`PF1-...`）を共有して設定を同期することを推奨します。
 
@@ -98,6 +108,16 @@ Chrome、Microsoft Edge、Brave など Chromium 系ブラウザに対応して�
 ---
 
 ## ❓ よくある質問 (FAQ)
+
+<details>
+<summary><b>Q. EUリージョンを選択してもウラジオストクサーバーが表示されません。</b></summary>
+A. FACEIT側の地域判定により非表示になっている場合があります。Pathfinderのポップアップ内にある **「🌐 RU プロキシ」** をONにしてFACEITを再読み込みするか、一時的にロシアまたはカザフスタンのVPN（無料の [VPN Obratno](https://vpnobratno.info/) や [VPNGate](https://www.vpngate.net/ja/) など）に接続してFACEITを開いてください。一度認識されればサーバーリストに表示されるようになります。
+</details>
+
+<details>
+<summary><b>Q. EUリージョンを選択してもウラジオストクサーバーが表示されません。</b></summary>
+A. FACEIT側の地域判定により非表示になっている場合があります。Pathfinderのポップアップ内にある **「🌐 RU プロキシ」** をONにしてFACEITを再読み込みするか、一時的にロシアまたはカザフスタンのVPN（無料の [VPN Obratno](https://vpnobratno.info/) や [VPNGate](https://www.vpngate.net/ja/) など）に接続してFACEITを開いてください。一度認識されればサーバーリストに表示されるようになります。
+</details>
 
 <details>
 <summary><b>Q. CS2のゲーム本体の動作やチート対策（FACEIT AC）に影響はありますか？</b></summary>
