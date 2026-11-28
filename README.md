@@ -107,7 +107,17 @@ Chrome、Microsoft Edge、Brave など Chromium 系ブラウザに対応して�
 
 <details>
 <summary><b>Q. EUリージョンを選択してもウラジオストクサーバーが表示されません。</b></summary>
-A. FACEIT側の地域判定により非表示になっている場合があります。一時的にロシアまたはカザフスタンのVPN（無料の [VPN Obratno](https://vpnobratno.info/en/) や [VPNGate](https://www.vpngate.net/ja/) など）に接続してFACEITを再読み込みしてください。一度認識されればサーバーリストに表示されるようになり、その後はVPNをオフにしてプレイ可能です。ご自身でロシアプロキシをお持ちの場合は、拡張機能の **「🌐 RU プロキシ」** タブに登録して利用することもできます。
+
+A. FACEIT側の地域判定により、日本のIPからアクセスするとロシアサーバーが非表示になる場合があります。以下の手順で解決できます：
+
+1. **一時的な無料VPN接続（最も簡単・推奨）:**  
+   一時的にロシアまたはカザフスタンのVPNに接続した状態でFACEITを開き、ページを再読み込み（Ctrl + Shift + R）してください。  
+   * [VPN Obratno](https://vpnobratno.info/en/)（無料・ロシア接続向け）
+   * [VPNGate](https://www.vpngate.net/ja/)（無料・筑波大学学術プロジェクト）  
+   *※一度サーバーリストに認識されれば、以降はVPNをオフにしてプレイ可能です。*
+
+2. **自前のプロキシ設定:**  
+   ロシアのSOCKS5/HTTPプロキシをお持ちの場合は、拡張機能の **「🌐 RU プロキシ」** タブに登録して有効化することで、FACEITの通信のみをプロキシ経由にすることも可能です。
 </details>
 
 <details>
